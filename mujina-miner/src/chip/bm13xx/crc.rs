@@ -1,15 +1,5 @@
 use crc_all::CrcAlgo;
 
-const CRC5_INIT: u8 = 0x1f;
-
-const CRC5_USB: CrcAlgo<u8> = CrcAlgo::<u8>::new(
-    0x5,       // polynomial
-    5,         // width
-    CRC5_INIT, // init
-    0,         // xorout
-    false,     // reflect
-);
-
 /// Calculates a 5-bit CRC using the USB polynomial over a slice of bytes.
 ///
 /// This function implements the CRC-5-USB algorithm which uses polynomial 0x05,
@@ -20,9 +10,29 @@ const CRC5_USB: CrcAlgo<u8> = CrcAlgo::<u8>::new(
 /// of bits in the provided bytes.
 pub fn crc5(data: &[u8]) -> u8 {
     let mut crc = CRC5_INIT;
-    CRC5_USB.update_crc(&mut crc, data);
-    CRC5_USB.finish_crc(&crc)
+    CRC5.update_crc(&mut crc, data);
+    CRC5.finish_crc(&crc)
 }
+
+/// Validates data integrity using the CRC-5-USB algorithm.
+///
+/// This function checks if the data passes CRC validation by calculating the CRC-5
+/// and verifying that the result is zero. When a CRC is appended to data, the CRC
+/// calculation over the entire data (including the CRC) should yield zero if the data
+/// is valid.
+pub fn crc5_is_valid(data: &[u8]) -> bool {
+    crc5(data) == 0
+}
+
+const CRC5_INIT: u8 = 0x1f;
+
+const CRC5: CrcAlgo<u8> = CrcAlgo::<u8>::new(
+    0x5,       // polynomial
+    5,         // width
+    CRC5_INIT, // init
+    0,         // xorout
+    false,     // reflect
+);
 
 #[cfg(test)]
 mod tests {
@@ -33,9 +43,14 @@ mod tests {
     // which is the expected CRC.
     #[test_case(&[0x55, 0xaa, 0x52, 0x05, 0x00, 0x00, 0x0a]; "read_register_0")]
     #[test_case(&[0x55, 0xaa, 0x51, 0x09, 0x00, 0x28, 0x11, 0x30, 0x02, 0x00, 0x03]; "set_baud")]
-    fn golden_frames(frame: &[u8]) {
+    fn calculate(frame: &[u8]) {
         let crc = super::crc5(&frame[2..frame.len() - 1]);
         let expect = frame[frame.len() - 1];
         assert_eq!(crc, expect);
+    }
+
+    #[test_case(&[0xaa, 0x55, 0x13, 0x70, 0x00, 0x00, 0x00, 0x00, 0x06]; "read_response")]
+    fn validate(frame: &[u8]) {
+        assert!(super::crc5_is_valid(&frame[2..]));
     }
 }

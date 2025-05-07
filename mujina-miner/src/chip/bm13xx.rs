@@ -1,11 +1,15 @@
+mod crc;
+
 use bitvec::prelude::*;
 use bytes::{Buf, BytesMut, BufMut};
-use crc_all::Crc;
 use std::io;
 use tokio_util::codec::{Encoder, Decoder};
 
 use crate::tracing::prelude::*;
+use crc::*;
 
+
+#[derive(Debug, PartialEq)]
 #[repr(u8)]
 pub enum Register {
     ChipAddress = 0,
@@ -34,12 +38,6 @@ struct CommandFieldBuilder {
 enum CommandFieldType {
     // Job = 1,
     Command = 2,
-}
-
-#[repr(u8)]
-enum ResponseType {
-    Command = 0,
-    Job = 4,
 }
 
 #[repr(u8)]
@@ -108,18 +106,6 @@ impl CommandFieldBuilder {
     }
 }
 
-fn crc5_usb(bytes: &[u8]) -> u8 {
-    const POLYNOMIAL: u8 = 0x05;
-    const WIDTH: usize = 5;
-    const INITIAL: u8 = 0x1f;
-    const XOR: u8 = 0;
-    const REFLECT: bool = false;
-    let mut crc5_usb = Crc::<u8>::new(POLYNOMIAL, WIDTH, INITIAL, XOR, REFLECT);
-
-    crc5_usb.update(bytes);
-    crc5_usb.finish()
-}
-
 #[derive(Default)]
 pub struct FrameCodec {
     // Controls whether to use the alternative frame format required when version rolling 
@@ -146,7 +132,7 @@ impl Encoder<Command> for FrameCodec {
             }
         }
 
-        let crc = crc5_usb(&dst[2..]);
+        let crc = crc5(&dst[2..]);
         dst.put_u8(crc);
 
         Ok(())
@@ -154,8 +140,26 @@ impl Encoder<Command> for FrameCodec {
 }
 
 pub enum Response {
-    RegisterValue { value: u32, address: u8, register: Register },
+    RegisterValue { value: u32, chip: u8, register: Register },
     Nonce,
+}
+
+#[repr(u8)]
+enum ResponseType {
+    Command = 0,
+    Job = 4,
+}
+
+impl TryFrom<u8> for ResponseType {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            value if value == ResponseType::Command as u8 => Ok(ResponseType::Command),
+            value if value == ResponseType::Job as u8 => Ok(ResponseType::Job),
+            _ => Err(()),
+        }
+    }
 }
 
 impl Decoder for FrameCodec {
@@ -201,45 +205,34 @@ impl Decoder for FrameCodec {
             return Ok(None);
         }
 
-        let kind_and_crc = src[frame_len - 1].view_bits::<Lsb0>();
-        let kind = kind_and_crc[5..].load::<u8>();
-        let crc = kind_and_crc[..4].load::<u8>();
-
-        eprintln!("kind {} crc {}", kind, crc);
-
-        //                        8    16    24    32    40    48    56    64
-        let crc5 = crc5_usb(&[0x13, 0x70, 0x00, 0x00, 0x00, 0x00, 0x00]);
-        eprintln!("crc 0x{:x} 0b{:b}", crc5, crc5);
-
-        if crc == crc5_usb(&src[PREAMBLE.len()..(frame_len - 2)]) {
+        if crc5_is_valid(&src[PREAMBLE.len()..]) {
             src.advance(frame_len);
         } else {
             src.advance(1);
-            eprintln!("BAD CRC");
             return Ok(None);
         }
 
-        const COMMAND_RESPONSE: u8 = 0;
-        const JOB_RESPONSE: u8 = 4;
+        let kind_and_crc = prospect[prospect.len() - 1].view_bits::<Lsb0>();
+        let kind = kind_and_crc[5..].load::<u8>();
 
-        Ok(match kind {
-            COMMAND_RESPONSE => {
-                let value = prospect.get_u32();  // TODO: le or be?
-                let address = prospect.get_u8();
+        Ok(match ResponseType::try_from(kind) {
+            Ok(ResponseType::Command) => {
+                let value = prospect.get_u32();
+                let chip = prospect.get_u8();
                 let register_address = prospect.get_u8();
 
                 if let Ok(register) = Register::try_from(register_address) {
-                    Some(Response::RegisterValue { value, address, register })
+                    Some(Response::RegisterValue { value, chip, register })
                 } else {
-                    debug!("Unknown register {} in response from chip.", register_address);
+                    warn!("Unknown register 0x{:x} in response from chip.", register_address);
                     None
                 }
             },
-            JOB_RESPONSE => {
+            Ok(ResponseType::Job) => {
                 Some(Response::Nonce)
             },
             _ => {
-                debug!("Unknown response type {} from chip.", kind);
+                warn!("Unknown response type 0x{:x} from chip.", kind);
                 None
             }
         })
@@ -251,7 +244,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn crc5_usb() {
+    fn command_read_register() {
+        assert_frame_eq(
+            Command::ReadRegister {
+                all: true,
+                address: 0,
+                register: Register::ChipAddress,
+            },
+            &[0x55, 0xaa, 0x52, 0x05, 0x00, 0x00, 0x0a],
+        );
+    }
+
+    #[test]
+    fn response_register_value() { 
+        let wire = &[0xaa, 0x55, 0x13, 0x70, 0x00, 0x00, 0x00, 0x00, 0x06];
+        let result = decode_frame(wire);
+        
+        if let Some(Response::RegisterValue { value, chip, register }) = result {
+            eprint!("value {:x}", &value);
+            assert_eq!(value, 0x1370_0000);
+            assert_eq!(chip, 0x00);
+            assert_eq!(register, Register::ChipAddress);
+        } else {
+            panic!();
+        }
     }
 
     fn as_hex(bytes: &[u8]) -> String {
@@ -275,40 +291,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn command_read_register() {
-        assert_frame_eq(
-            Command::ReadRegister {
-                all: true,
-                address: 0,
-                register: Register::ChipAddress,
-            },
-            &[0x55, 0xaa, 0x52, 0x05, 0x00, 0x00, 0x0a],
-        );
-    }
-
     fn decode_frame(frame: &[u8]) -> Option<Response> {
         let mut buf = BytesMut::from(frame);
         let mut codec = FrameCodec::default();
         codec.decode(&mut buf).unwrap()
-    }
-
-    #[test]
-    #[ignore]
-    fn response_register_value_wip() { 
-        let wire = &[0xaa, 0x55, 0x13, 0x70, 0x00, 0x00, 0x00, 0x00, 0x06];
-        let result = decode_frame(wire);
-        assert!(result.is_some());
-        
-        // If you want to test the specific value inside Some:
-        // if let Some(response) = result {
-        //     match response {
-        //         Response::RegisterValue { value, address, register } => {
-        //             assert_eq!(value, 0x78563412); // Assuming little-endian byte order
-        //             assert_eq!(address, 0x01);
-        //             assert_eq!(register as u8, 0x00);
-        //         }
-        //     }
-        // }
     }
 }
