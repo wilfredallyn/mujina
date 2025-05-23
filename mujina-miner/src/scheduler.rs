@@ -29,8 +29,8 @@ pub async fn task(running: CancellationToken) {
     while !running.is_cancelled() {
         let read_address = bm13xx::Command::ReadRegister {
             all: true,
-            address: 0,
-            register: bm13xx::Register::ChipAddress,
+            chip_address: 0,
+            register_address: bm13xx::RegisterAddress::ChipAddress,
         };
 
         trace!("Writing to port.");

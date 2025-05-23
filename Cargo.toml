@@ -19,4 +19,6 @@ bytes = "1"
 bitvec = "1.0"
 crc_all = "0.2"
 futures = "0.3"
+strum = { version = "0.27", features = ["derive"] }
 test-case = "3.3.1"
+modular-bitfield = "0.12"
