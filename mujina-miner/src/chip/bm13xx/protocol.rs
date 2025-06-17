@@ -1,4 +1,7 @@
-//! This module implements an interface to the BM13xx chips.
+//! BM13xx protocol implementation for chip communication.
+//!
+//! This module handles the encoding and decoding of commands and responses
+//! for BM13xx family chips (BM1366, BM1370, etc).
 
 use bitvec::prelude::*;
 use bytes::{Buf, BufMut, BytesMut};
@@ -7,9 +10,8 @@ use strum::FromRepr;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::tracing::prelude::*;
-use crc::*;
-
-mod crc;
+use crate::chip::{MiningJob, ChipError};
+use super::crc::{crc5, crc5_is_valid};
 
 #[derive(FromRepr, Copy, Clone)]
 #[repr(u8)]
@@ -368,3 +370,118 @@ mod response_tests {
 
 // Bytes go out on the wire least-significant byte first.
 // Multi-byte fields are sent most-significant byte first, i.e., big-endian.
+
+/// Protocol handler for BM13xx family chips.
+/// 
+/// Encodes high-level operations into chip-specific commands and
+/// decodes chip responses into meaningful results.
+pub struct BM13xxProtocol {
+    /// Whether version rolling is enabled
+    version_rolling: bool,
+}
+
+impl BM13xxProtocol {
+    /// Create a new protocol instance.
+    pub fn new(version_rolling: bool) -> Self {
+        Self { version_rolling }
+    }
+    
+    /// Encode a mining job into a chip command.
+    /// 
+    /// # Note
+    /// This is a placeholder - the actual job encoding format needs to be
+    /// implemented based on the BM13xx datasheet and reference implementations.
+    pub fn encode_mining_job(&self, job: &MiningJob, chip_address: u8) -> Command {
+        // TODO: Implement actual job encoding
+        // For now, return a placeholder
+        todo!("Implement mining job encoding for BM13xx")
+    }
+    
+    /// Get the initialization sequence for a chip.
+    /// 
+    /// Returns a vector of commands to configure the chip for mining:
+    /// 1. Set PLL parameters for desired frequency
+    /// 2. Enable version rolling if supported
+    /// 3. Configure other chip-specific settings
+    pub fn initialization_sequence(&self, chip_address: u8) -> Vec<Command> {
+        let mut commands = Vec::new();
+        
+        // TODO: Add actual initialization commands
+        // For now, just read the chip address register as a test
+        commands.push(Command::ReadRegister {
+            all: false,
+            chip_address,
+            register_address: RegisterAddress::ChipAddress,
+        });
+        
+        commands
+    }
+    
+    /// Decode a response into a mining result.
+    pub fn decode_response(&self, response: Response, chip_address: u8) -> Result<MiningResult, ChipError> {
+        match response {
+            Response::ReadRegister { chip_address: _, register } => {
+                Ok(MiningResult::RegisterRead(register))
+            }
+            Response::Nonce => {
+                // TODO: Decode nonce response properly
+                // Need to extract:
+                // - Job ID
+                // - Nonce value
+                // - Core that found it
+                Err(ChipError::InvalidResponse("Nonce decoding not implemented".to_string()))
+            }
+        }
+    }
+    
+    /// Create a command to read a register.
+    pub fn read_register(&self, chip_address: u8, register: RegisterAddress) -> Command {
+        Command::ReadRegister {
+            all: false,
+            chip_address,
+            register_address: register,
+        }
+    }
+    
+    /// Create a command to write a register.
+    /// 
+    /// Note: This is a placeholder - actual register encoding depends on the register type
+    pub fn write_register(&self, chip_address: u8, register: RegisterAddress, value: u32) -> Command {
+        // TODO: Properly encode register based on type
+        // For now, just handle RegA8 as an example
+        let register_value = match register {
+            RegisterAddress::ChipAddress => {
+                // Can't write chip address register
+                panic!("Cannot write to chip address register");
+            }
+            RegisterAddress::RegA8 => Register::RegA8 { unknown: value },
+        };
+        
+        Command::WriteRegister {
+            all: false,
+            chip_address,
+            register: register_value,
+        }
+    }
+    
+    /// Create a broadcast command to discover all chips.
+    pub fn discover_chips() -> Command {
+        Command::ReadRegister {
+            all: true,  // Broadcast
+            chip_address: 0,
+            register_address: RegisterAddress::ChipAddress,
+        }
+    }
+}
+
+/// Results from protocol operations
+pub enum MiningResult {
+    /// A register was read
+    RegisterRead(Register),
+    /// A nonce was found
+    NonceFound {
+        job_id: u64,
+        nonce: u32,
+        core_id: u8,
+    },
+}

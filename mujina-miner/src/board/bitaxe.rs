@@ -2,9 +2,13 @@ use std::time::Duration;
 use tokio::{io::AsyncWriteExt, time};
 use tokio_serial::SerialStream;
 use async_trait::async_trait;
+use tokio_stream::StreamExt;
+use tokio_util::codec::{FramedRead, FramedWrite};
+use futures::sink::SinkExt;
 
 use crate::board::{Board, BoardError, BoardInfo};
-use crate::chip::Chip;
+use crate::chip::{Chip, ChipInfo};
+use crate::chip::bm13xx::{self, BM13xxProtocol};
 
 /// Bitaxe Gamma hashboard abstraction.
 ///
@@ -15,8 +19,10 @@ pub struct BitaxeBoard {
     control: SerialStream,
     /// Serial data channel for chip communication
     data: SerialStream,
-    /// Discovered chips on this board
-    chips: Vec<Box<dyn Chip>>,
+    /// Protocol handler for chip communication
+    protocol: BM13xxProtocol,
+    /// Discovered chip information (passive record-keeping)
+    chip_infos: Vec<ChipInfo>,
 }
 
 impl BitaxeBoard {
@@ -28,11 +34,16 @@ impl BitaxeBoard {
     ///
     /// # Returns
     /// A new BitaxeBoard instance ready for hardware operations
+    /// 
+    /// # Design Note
+    /// In the future, a DeviceManager will create boards when USB devices
+    /// are detected (by VID/PID) and pass already-opened serial streams.
     pub fn new(control: SerialStream, data: SerialStream) -> Self {
         BitaxeBoard { 
             control,
             data,
-            chips: Vec::new(),
+            protocol: BM13xxProtocol::new(false), // TODO: Make version rolling configurable
+            chip_infos: Vec::new(),
         }
     }
 
@@ -66,6 +77,67 @@ impl BitaxeBoard {
 
         Ok(())
     }
+    
+    /// Discover chips connected to this board.
+    /// 
+    /// Sends broadcast ReadRegister commands and collects responses
+    /// to identify all chips on the serial bus.
+    async fn discover_chips(&mut self) -> Result<(), BoardError> {
+        // Split the data stream for reading and writing
+        let (read_stream, write_stream) = tokio::io::split(&mut self.data);
+        let mut framed_read = FramedRead::new(read_stream, bm13xx::FrameCodec::default());
+        let mut framed_write = FramedWrite::new(write_stream, bm13xx::FrameCodec::default());
+        
+        // Send a broadcast read to discover chips
+        let discover_cmd = BM13xxProtocol::discover_chips();
+        
+        framed_write.send(discover_cmd).await
+            .map_err(|e| BoardError::Communication(e))?;
+        
+        // Wait a bit for responses
+        let timeout = Duration::from_millis(500);
+        let deadline = tokio::time::Instant::now() + timeout;
+        
+        while tokio::time::Instant::now() < deadline {
+            tokio::select! {
+                response = framed_read.next() => {
+                    match response {
+                        Some(Ok(bm13xx::Response::ReadRegister {
+                            chip_address: _,
+                            register: bm13xx::Register::ChipAddress { chip_id, core_count, address }
+                        })) => {
+                            tracing::info!("Discovered chip 0x{chip_id:x} at address {address} with {core_count} cores");
+                            
+                            let chip_info = ChipInfo {
+                                chip_id,
+                                core_count: core_count.into(),
+                                address,
+                                supports_version_rolling: true, // BM1370 supports this
+                            };
+                            
+                            self.chip_infos.push(chip_info);
+                        }
+                        Some(Ok(_)) => {
+                            tracing::warn!("Unexpected response during chip discovery");
+                        }
+                        Some(Err(e)) => {
+                            tracing::error!("Error during chip discovery: {e}");
+                        }
+                        None => break,
+                    }
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    break;
+                }
+            }
+        }
+        
+        if self.chip_infos.is_empty() {
+            Err(BoardError::InitializationFailed("No chips discovered".to_string()))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[async_trait]
@@ -80,24 +152,22 @@ impl Board for BitaxeBoard {
         // Reset the board first
         self.reset().await?;
         
-        // TODO: Implement chip discovery
-        // For now, we'll need to:
-        // 1. Send ReadRegister commands to discover chips
-        // 2. Create BM13xx chip instances for each discovered chip
-        // 3. Store them in self.chips
+        // Discover connected chips
+        self.discover_chips().await?;
         
-        // Placeholder for now
-        tracing::info!("Board initialization not yet implemented");
+        tracing::info!("Board initialized with {} chip(s)", self.chip_infos.len());
         
         Ok(())
     }
     
     fn chips(&self) -> &[Box<dyn Chip>] {
-        &self.chips
+        // TODO: Chips are now passive record-keeping, need to refactor Board trait
+        &[]
     }
     
     fn chips_mut(&mut self) -> &mut Vec<Box<dyn Chip>> {
-        &mut self.chips
+        // TODO: Chips are now passive record-keeping, need to refactor Board trait
+        panic!("chips_mut not implemented - chips are now passive")
     }
     
     fn board_info(&self) -> BoardInfo {
