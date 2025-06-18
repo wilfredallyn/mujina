@@ -36,8 +36,8 @@ pub trait Chip: Send {
 /// Information about a chip
 #[derive(Debug, Clone)]
 pub struct ChipInfo {
-    /// Chip model identifier (e.g., 0x1370 for BM1370)
-    pub chip_id: u16,
+    /// Chip model identifier (e.g., [0x13, 0x70] for BM1370)
+    pub chip_id: [u8; 2],
     /// Number of hashing cores
     pub core_count: u32,
     /// Chip address on the serial bus

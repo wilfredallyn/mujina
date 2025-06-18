@@ -27,7 +27,7 @@ pub enum RegisterAddress {
 #[derive(Debug)]
 pub enum Register {
     ChipAddress {
-        chip_id: u16,
+        chip_id: [u8; 2],  // Stored as big-endian byte sequence (e.g., [0x13, 0x70] for BM1370)
         core_count: u8,
         address: u8,
     },
@@ -40,12 +40,12 @@ impl Register {
     fn decode(address: RegisterAddress, bytes: &[u8; 4]) -> Register {
         match address {
             RegisterAddress::ChipAddress => Register::ChipAddress {
-                chip_id: u16::from_be_bytes(bytes[0..2].try_into().unwrap()),
-                core_count: u8::from_be(bytes[2]),
-                address: u8::from_be(bytes[3]),
+                chip_id: [bytes[0], bytes[1]],
+                core_count: bytes[2],
+                address: bytes[3],
             },
             RegisterAddress::RegA8 => Register::RegA8 { 
-                unknown: u32::from_be_bytes(*bytes)
+                unknown: u32::from_le_bytes(*bytes)
             },
         }
     }
@@ -173,13 +173,13 @@ impl Command {
                 match register {
                     Register::ChipAddress { chip_id, core_count, address } => {
                         dst.put_u8(RegisterAddress::ChipAddress as u8);
-                        dst.put_u16(*chip_id);
+                        dst.put_slice(chip_id);  // Already in correct byte order
                         dst.put_u8(*core_count);
                         dst.put_u8(*address);
                     }
                     Register::RegA8 { unknown } => {
                         dst.put_u8(RegisterAddress::RegA8 as u8);
-                        dst.put_u32(*unknown);
+                        dst.put_u32_le(*unknown);
                     }
                 }
             }
@@ -299,10 +299,10 @@ impl Response {
                 // BM1370 nonce response format (11 bytes total, including preamble):
                 // Already consumed: preamble (2 bytes)
                 // Remaining: nonce(4) + midstate_num(1) + job_id(1) + version(2) + crc(1)
-                let nonce = bytes.get_u32();
+                let nonce = bytes.get_u32_le();
                 let midstate_num = bytes.get_u8();
                 let job_id = bytes.get_u8();
-                let version = bytes.get_u16();
+                let version = bytes.get_u16_le();
                 // CRC already consumed
                 
                 Ok(Response::Nonce {
@@ -339,7 +339,7 @@ impl Encoder<Command> for FrameCodec {
             Command::JobFull { .. } | Command::JobMidstate { .. } => {
                 // Calculate CRC16 over flags + length + data
                 let crc = crc16(&dst[start_pos..]);
-                dst.put_u16(crc);
+                dst.put_u16_le(crc);
             }
             _ => {
                 // Calculate CRC5 over everything after preamble
@@ -436,13 +436,52 @@ mod command_tests {
                 all: false,
                 chip_address: 0x01,
                 register: Register::ChipAddress {
-                    chip_id: 0x1370,
+                    chip_id: [0x13, 0x70],  // BM1370
                     core_count: 0x00,
                     address: 0x01,
                 },
             },
             &[0x55, 0xaa, 0x41, 0x09, 0x01, 0x00, 0x13, 0x70, 0x00, 0x01, 0x0a],
         );
+    }
+    
+    #[test]
+    fn job_full_format_encoding() {
+        // Test BM1370 job packet encoding
+        let job = JobFullFormat {
+            job_id: 0x00,
+            num_midstates: 0x01,
+            starting_nonce: [0x00, 0x00, 0x00, 0x00],
+            nbits: [0x17, 0x0e, 0xd6, 0x6a],
+            ntime: [0x66, 0x73, 0x8c, 0x20],
+            merkle_root: [0xaa; 32], // Simple test pattern
+            prev_block_hash: [0xbb; 32], // Simple test pattern
+            version: [0x00, 0x00, 0x00, 0x20], // Version 32
+        };
+        
+        let mut codec = FrameCodec::default();
+        let mut frame = BytesMut::new();
+        codec.encode(Command::JobFull { job_data: job.clone() }, &mut frame).unwrap();
+        
+        // Verify packet structure
+        assert_eq!(&frame[0..2], &[0x55, 0xaa]); // Preamble
+        assert_eq!(frame[2], 0x21); // TYPE_JOB | GROUP_SINGLE | CMD_WRITE  
+        assert_eq!(frame[3], 86); // Total length
+        assert_eq!(frame[4], job.job_id);
+        assert_eq!(frame[5], job.num_midstates);
+        assert_eq!(&frame[6..10], &job.starting_nonce);
+        assert_eq!(&frame[10..14], &job.nbits);
+        assert_eq!(&frame[14..18], &job.ntime);
+        assert_eq!(&frame[18..50], &job.merkle_root);
+        assert_eq!(&frame[50..82], &job.prev_block_hash);
+        assert_eq!(&frame[82..86], &job.version);
+        
+        // Verify CRC16
+        assert_eq!(frame.len(), 88);
+        let crc_bytes = &frame[86..88];
+        let calculated_crc = crc16(&frame[2..86]);
+        let frame_crc = u16::from_be_bytes([crc_bytes[0], crc_bytes[1]]);
+        assert_eq!(calculated_crc, frame_crc);
     }
 
     fn assert_frame_eq(cmd: Command, expect: &[u8]) {
@@ -495,7 +534,7 @@ mod response_tests {
             panic!();
         };
 
-        assert_eq!(chip_id, 0x1370);
+        assert_eq!(chip_id, [0x13, 0x70]);  // BM1370
         assert_eq!(core_count, 0x00);
         assert_eq!(address, 0x00);
     }

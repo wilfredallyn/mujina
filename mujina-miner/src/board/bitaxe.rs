@@ -120,7 +120,7 @@ impl BitaxeBoard {
                             chip_address: _,
                             register: bm13xx::Register::ChipAddress { chip_id, core_count, address }
                         })) => {
-                            tracing::info!("Discovered chip 0x{chip_id:x} at address {address} with {core_count} cores");
+                            tracing::info!("Discovered chip {:02x}{:02x} at address {address} with {core_count} cores", chip_id[0], chip_id[1]);
                             
                             let chip_info = ChipInfo {
                                 chip_id,
