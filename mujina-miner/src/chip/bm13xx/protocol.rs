@@ -538,6 +538,7 @@ enum CommandFlagsCmd {
 }
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "JobMidstate variant will be used for BM1397 support")]
 pub enum Command {
     /// Set address for a chip in the chain
     SetChipAddress {
@@ -766,6 +767,7 @@ enum ResponseType {
 }
 
 #[derive(Debug)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub enum Response {
     ReadRegister {
         chip_address: u8,
@@ -1763,6 +1765,7 @@ impl BM13xxProtocol {
     }
     
     /// Helper to create a targeted write command
+    #[cfg_attr(not(test), allow(dead_code))]
     fn write_to(&self, chip_address: u8, register: Register) -> Command {
         Command::WriteRegister {
             all: false,
@@ -1826,6 +1829,7 @@ impl BM13xxProtocol {
     /// 3. Set chain inactive and assign addresses
     /// 4. Configure domain boundaries
     /// 5. Ramp up frequency gradually
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn multi_chip_init(&self, chain_length: usize) -> Vec<Command> {
         // Multi-chip initialization register values
         const INIT_CONTROL_VALUE: u32 = 0x00000700;
@@ -1898,6 +1902,7 @@ impl BM13xxProtocol {
     /// 
     /// Domains are groups of chips that share signal integrity settings.
     /// This configures IO driver strength and UART relay for domain boundaries.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn configure_domains(&self, chain_length: usize, chips_per_domain: usize) -> Vec<Command> {
         const UART_RELAY_BASE: u32 = 0x03000000;
         const ADDRESS_INCREMENT: u8 = 2;
@@ -1951,6 +1956,7 @@ impl BM13xxProtocol {
     /// 
     /// This distributes the 32-bit nonce space across all chips in the chain
     /// to avoid duplicate work. Each chip searches a unique portion of the nonce space.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn configure_nonce_ranges(&self, chain_length: usize) -> Vec<Command> {
         let mut commands = Vec::new();
         
@@ -1969,6 +1975,7 @@ impl BM13xxProtocol {
     /// 
     /// For multi-chip chains, each chip gets the same job but searches different
     /// portions of the nonce space based on their chip address and NONCE_RANGE setting.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn distribute_job(&self, job: &MiningJob, _chain_length: usize, job_id: u8) -> Vec<Command> {
         let mut commands = Vec::new();
         
@@ -2013,6 +2020,7 @@ impl BM13xxProtocol {
     }
     
     /// Decode a response into a mining result.
+    #[expect(dead_code, reason = "Will be used for nonce verification when pool is connected")]
     pub fn decode_response(&self, response: Response, _chip_address: u8) -> Result<MiningResult, ChipError> {
         match response {
             Response::ReadRegister { chip_address: _, register } => {
@@ -2042,6 +2050,7 @@ impl BM13xxProtocol {
     }
     
     /// Create a command to read a register.
+    #[expect(dead_code, reason = "Will be used for chip diagnostics and monitoring")]
     pub fn read_register(&self, chip_address: u8, register: RegisterAddress) -> Command {
         Command::ReadRegister {
             all: false,
@@ -2051,6 +2060,7 @@ impl BM13xxProtocol {
     }
     
     /// Set UART baud rate on all chips
+    #[expect(dead_code, reason = "Will be used for baud rate negotiation")]
     pub fn set_baudrate(&self, baudrate: BaudRate) -> Command {
         Command::WriteRegister {
             all: true,
@@ -2062,6 +2072,7 @@ impl BM13xxProtocol {
     /// Create a command to write a register.
     /// 
     /// Note: This is a placeholder - actual register encoding depends on the register type
+    #[expect(dead_code, reason = "Will be used for chip configuration")]
     pub fn write_register(&self, chip_address: u8, register: RegisterAddress, value: u32) -> Result<Command, ProtocolError> {
         // TODO: Properly encode register based on type
         // For now, just handle RegA8 as an example
@@ -2113,6 +2124,7 @@ impl BM13xxProtocol {
 }
 
 /// Results from protocol operations
+#[expect(dead_code, reason = "Will be used when pool connection is implemented")]
 pub enum MiningResult {
     /// A register was read
     RegisterRead(Register),

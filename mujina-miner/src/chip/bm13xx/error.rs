@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[expect(dead_code, reason = "Error variants defined for protocol completeness")]
 pub enum ProtocolError {
     #[error("Invalid register address: 0x{0:02x}")]
     InvalidRegisterAddress(u8),
