@@ -458,7 +458,7 @@ impl BitaxeBoard {
                 // Read fan RPM (if TACH is connected)
                 let fan_rpm = match fan.get_tach_count().await {
                     Ok(count) => {
-                        debug!("TACH count: 0x{:04x}", count);
+                        trace!("TACH count: 0x{:04x}", count);
                         match fan.get_rpm().await {
                             Ok(rpm) if rpm > 0 => format!("{} RPM", rpm),
                             Ok(_) => format!("0 RPM (TACH: 0x{:04x})", count),
@@ -466,7 +466,7 @@ impl BitaxeBoard {
                         }
                     }
                     Err(e) => {
-                        debug!("Failed to read TACH: {}", e);
+                        trace!("Failed to read TACH: {}", e);
                         "N/A".to_string()
                     }
                 };
