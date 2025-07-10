@@ -34,6 +34,11 @@ Debian-based embedded Linux distribution optimized for Bitcoin mining hardware.
 - [Bitaxe-Raw Control Protocol](mujina-miner/src/mgmt_protocol/bitaxe_raw/PROTOCOL.md) -
   Management protocol for Bitaxe board peripherals
 
+### Hardware Documentation
+
+- [Bitaxe Gamma Board Guide](mujina-miner/src/board/bitaxe_gamma.md) - Hardware
+  and software interface documentation for Bitaxe Gamma
+
 ## Supported Hardware
 
 Currently supported:
@@ -97,7 +102,11 @@ Key components:
 This is an active development project. Current focus areas:
 - [x] Basic board initialization and chip discovery
 - [x] GPIO control for ASIC reset
-- [ ] I2C peripheral control (fan, temperature, power monitoring)
+- [x] I2C peripheral control implementation
+- [x] EMC2101 fan controller with temperature monitoring
+- [ ] TPS546 power management controller
+- [ ] Additional temperature sensors (TMP75)
+- [ ] Power monitoring (INA260)
 - [ ] Stratum pool communication
 - [ ] Production-ready error handling and recovery
 
