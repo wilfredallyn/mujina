@@ -64,11 +64,13 @@ Standard I2C operations with 7-bit addressing:
 - Texas Instruments digital buck converter
 - PMBus protocol for control and monitoring
 - Functions:
-  - Core voltage adjustment (0.8V - 2.0V typical)
-  - Input voltage monitoring
+  - Core voltage adjustment for ASIC power
+  - Input voltage monitoring (5V USB power)
   - Output current monitoring
   - Temperature monitoring
   - Fault protection (OV, OC, OT)
+- Configured for Bitaxe Gamma's single BM1370 ASIC requirements
+- See `Tps546Config::bitaxe_gamma()` in the code for specific values
 
 ### Thermal Management - EMC2101
 - I2C address: `0x4C`
@@ -76,8 +78,8 @@ Standard I2C operations with 7-bit addressing:
 - PWM fan controller with integrated temperature sensor
 - External temperature diode connected to ASIC
 - TACH input for RPM monitoring (5.6kΩ pull-up)
-- Requires CONFIG register bit 2 set to enable TACH input
-- RPM calculation: `RPM = 5,400,000 / TACH_count`
+- Requires TACH input enabled in CONFIG register
+- See EMC2101 driver implementation for RPM calculation details
 
 ### Reset Control
 - GPIO 0: ASIC reset (active low)
