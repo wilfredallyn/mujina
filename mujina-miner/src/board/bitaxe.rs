@@ -437,10 +437,10 @@ impl BitaxeBoard {
                 // Delay before setting voltage
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 
-                // Set initial output voltage (1.2V)
-                match tps546.set_vout(1.2).await {
+                // Set initial output voltage (1.15V - BM1370 default from esp-miner)
+                match tps546.set_vout(1.15).await {
                     Ok(()) => {
-                        info!("Core voltage set to 1.2V");
+                        info!("Core voltage set to 1.15V");
                         
                         // Wait for voltage to stabilize
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -612,8 +612,21 @@ impl Board for BitaxeBoard {
         // Reset the board first
         self.reset().await?;
 
-        // Phase 1: Initial communication at 115200 baud
-        tracing::info!("Starting initialization at 115200 baud");
+        // Phase 1: Initialize power controller FIRST (before chip communication)
+        // This ensures stable core voltage before chip configuration
+        tracing::info!("Initializing power management");
+        
+        // Initialize fan controller first to test I2C
+        self.init_fan_controller().await?;
+        
+        // Initialize power controller and set core voltage
+        self.init_power_controller().await?;
+        
+        // Wait for voltage to fully stabilize after PMIC init
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Phase 2: Initial communication at 115200 baud
+        tracing::info!("Starting chip initialization at 115200 baud");
 
         // Enable version rolling before chip discovery (as seen in serial captures)
         // Write 0xFFFF0090 to register 0xA4 to enable version rolling
@@ -667,7 +680,17 @@ impl Board for BitaxeBoard {
             };
             self.send_config_command(core_reg_cmd2).await?;
             
-            // Phase 2: Send baud rate change command to chip
+            // Add the missing third core register write (critical for nonce return)
+            let core_reg_cmd3 = Command::WriteRegister {
+                all: true,
+                chip_address: 0x00,
+                register: bm13xx::protocol::Register::CoreRegister {
+                    raw_value: 0x8000_8DEE,
+                },
+            };
+            self.send_config_command(core_reg_cmd3).await?;
+            
+            // Phase 3: Send baud rate change command to chip
             // Bitaxe Gamma always changes from 115200 to 1Mbps
             tracing::info!("Sending baud rate change command to BM1370 for {} baud", Self::TARGET_BAUD_RATE);
             let baud_cmd = Command::WriteRegister {
@@ -766,33 +789,19 @@ impl Board for BitaxeBoard {
             };
             self.send_config_command(misc_b9_cmd2).await?;
             
-            // Core register control - final setting
-            let core_reg_final = Command::WriteRegister {
-                all: true,
-                chip_address: 0x00,
-                register: bm13xx::protocol::Register::CoreRegister {
-                    raw_value: 0x8000_8DEE,
-                },
-            };
-            self.send_config_command(core_reg_final).await?;
-            
             // Register 0x10: Hash counting register (nonce range)
-            // Using single chip configuration
+            // Use S21 Pro value (0x1EB5) that esp-miner uses for BM1370
+            // This is critical for proper nonce generation and return
             let hash_count_cmd = Command::WriteRegister {
                 all: true,
                 chip_address: 0x00,
                 register: bm13xx::protocol::Register::NonceRange(
-                    bm13xx::protocol::NonceRangeConfig::single_chip()
+                    // Use the S21 Pro configuration that esp-miner uses
+                    bm13xx::protocol::NonceRangeConfig::multi_chip(65)
                 ),
             };
             self.send_config_command(hash_count_cmd).await?;
         }
-        
-        // Initialize fan controller first to test I2C
-        self.init_fan_controller().await?;
-        
-        // Initialize power controller
-        self.init_power_controller().await?;
 
         // Create event channel
         let (tx, rx) = tokio::sync::mpsc::channel(100);

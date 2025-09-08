@@ -509,9 +509,12 @@ impl Register {
                 let bytes: [u8; 4] = (*baud).into();
                 dst.put_slice(&bytes);
             }
+            Register::CoreRegister { raw_value } => {
+                // Core register needs big-endian encoding
+                dst.put_u32(*raw_value);
+            }
             Register::MiscControl { raw_value }
             | Register::UartRelay { raw_value }
-            | Register::CoreRegister { raw_value }
             | Register::AnalogMux { raw_value }
             | Register::Pll3Parameter { raw_value }
             | Register::InitControl { raw_value }

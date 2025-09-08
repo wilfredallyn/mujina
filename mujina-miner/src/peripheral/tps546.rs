@@ -136,7 +136,7 @@ impl Tps546Config {
             vout_scale_loop: 0.25,
             vout_min: 1.0,
             vout_max: 2.0,
-            vout_command: 1.2,
+            vout_command: 1.15,  // BM1370 default voltage
             iout_oc_warn_limit: 25.0,
             iout_oc_fault_limit: 30.0,
         }
