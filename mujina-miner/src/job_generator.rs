@@ -143,8 +143,8 @@ impl JobGenerator {
             nonce_start: 0,
             nonce_range: u32::MAX, // Search full range
             version: header.version.to_consensus() as u32,
-            prev_block_hash: header.prev_blockhash.as_byte_array().clone(),
-            merkle_root: header.merkle_root.as_byte_array().clone(),
+            prev_block_hash: *header.prev_blockhash.as_byte_array(),
+            merkle_root: *header.merkle_root.as_byte_array(),
             ntime: header.time,
             nbits: header.bits.to_consensus(),
         };
@@ -199,13 +199,18 @@ impl JobGenerator {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
-        // Merkle root from real pool data
-        let merkle_root_bytes = [
+        // Merkle root from real pool data, but vary it slightly for each job
+        // to simulate different transactions in each block
+        let mut merkle_root_bytes = [
             0x9c, 0xb5, 0x3d, 0x58, 0x19, 0xf4, 0xb7, 0xe6,
             0x29, 0xb1, 0xf7, 0xac, 0x4a, 0x87, 0x2c, 0x14,
             0x71, 0x64, 0x4f, 0x8e, 0xbd, 0x97, 0x18, 0x2a,
             0x4d, 0x00, 0x29, 0x0d, 0x72, 0x63, 0xd4, 0x87,
         ];
+        
+        // Vary the last 4 bytes based on job counter to make each job unique
+        let counter_bytes = (self.job_id_counter as u32).to_le_bytes();
+        merkle_root_bytes[28..32].copy_from_slice(&counter_bytes);
 
         // Use easier difficulty than the original pool job (0x17023a04)
         // to increase chances of finding nonces at our test frequency
@@ -256,7 +261,7 @@ impl JobGenerator {
             nonce_range: u32::MAX,
             version: 1,
             prev_block_hash: [0; 32],
-            merkle_root: header.merkle_root.as_byte_array().clone(),
+            merkle_root: *header.merkle_root.as_byte_array(),
             ntime: header.time,
             nbits: header.bits.to_consensus(),
         };
