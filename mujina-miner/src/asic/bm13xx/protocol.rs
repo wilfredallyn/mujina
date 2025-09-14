@@ -2,6 +2,18 @@
 //!
 //! This module handles the encoding and decoding of commands and responses
 //! for BM13xx family chips (BM1366, BM1370, etc).
+//!
+//! TODO: Build unit tests based on known serial captures
+//! - Test Command::try_parse_frame with actual captured work frames
+//! - Test CRC16 big-endian validation with known good/bad frames
+//! - Test JobFull parsing with real mining job data from captures
+//! - Add response frame parsing tests when Response::try_parse_frame is implemented
+//!
+//! TODO: Remove redundancy in BM13xx protocol implementation
+//! - Consolidate CRC validation logic between decoder and dissector code paths
+//! - Extract common frame parsing utilities to reduce duplication
+//! - Consider shared frame validation traits/interfaces
+//! - Unify endianness handling across different frame types
 
 use bitvec::prelude::*;
 use bytes::{Buf, BufMut, BytesMut};

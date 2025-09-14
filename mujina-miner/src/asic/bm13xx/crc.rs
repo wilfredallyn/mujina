@@ -1,3 +1,11 @@
+//! CRC validation utilities for BM13xx protocol frames.
+//!
+//! TODO: Remove redundancy between protocol decoder and dissector CRC usage
+//! - Both protocol.rs and dissect.rs implement similar CRC validation logic
+//! - Consider extracting frame validation helpers to reduce duplication
+//! - Unify CRC16 big-endian handling across different code paths
+//! - Add comprehensive unit tests using known good/bad frames from captures
+
 use crc_all::CrcAlgo;
 
 /// Calculates a 5-bit CRC using the USB polynomial over a slice of bytes.
@@ -73,6 +81,12 @@ const CRC16: CrcAlgo<u16> = CrcAlgo::<u16>::new(
 #[cfg(test)]
 mod tests {
     use test_case::test_case;
+
+    // TODO: Add unit tests based on actual serial captures
+    // - Import frames from ~/mujina/captures/bitaxe-gamma-logic/esp-miner-boot.csv
+    // - Test CRC16 big-endian validation for work frames
+    // - Test CRC5 validation for response frames
+    // - Add test cases for edge cases discovered during capture analysis
 
     // Test that a computed CRC5 matches that of a few frames known to be good, taken from the
     // esp-miner source code. Skip the first two bytes, which are a prefix, and the last byte,
