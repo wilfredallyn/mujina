@@ -5,7 +5,7 @@
 
 use bitvec::prelude::*;
 use bytes::{Buf, BufMut, BytesMut};
-use std::io;
+use std::{fmt, io};
 use strum::FromRepr;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -789,6 +789,104 @@ impl Command {
                 }
             }
         }
+    }
+
+    /// Parse a command from raw frame data for dissection
+    /// Returns (command, crc_valid)
+    pub fn try_parse_frame(data: &[u8]) -> Result<(Self, bool), ProtocolError> {
+        if data.len() < 5 {
+            return Err(ProtocolError::InvalidFrame);
+        }
+
+        // Check preamble
+        if data[0] != 0x55 || data[1] != 0xAA {
+            return Err(ProtocolError::InvalidFrame);
+        }
+
+        let type_flags = data[2];
+        let _length = data[3] as usize;
+
+        // Validate CRC5 (skip preamble, include CRC for validation)
+        let crc_valid = crc5_is_valid(&data[2..]);
+
+        // Parse type flags
+        let is_work = (type_flags & 0x80) != 0;
+        let is_broadcast = (type_flags & 0x40) != 0;
+        let cmd = type_flags & 0x1f;
+
+        if is_work {
+            // For now, return an error for mining jobs (can be implemented later)
+            return Err(ProtocolError::InvalidFrame);
+        }
+
+        // Parse command
+        let command = match (cmd, is_broadcast) {
+            (0, false) => Command::SetChipAddress {
+                chip_address: data[4],
+            },
+            (1, false) => {
+                if data.len() >= 10 {
+                    let chip_address = data[4];
+                    let reg_addr = RegisterAddress::from_repr(data[5])
+                        .ok_or(ProtocolError::InvalidRegisterAddress(data[5]))?;
+                    let value_bytes: [u8; 4] = data[6..10].try_into().unwrap();
+                    let register = Register::decode(reg_addr, &value_bytes);
+                    Command::WriteRegister {
+                        all: false,
+                        chip_address,
+                        register,
+                    }
+                } else {
+                    return Err(ProtocolError::InvalidFrame);
+                }
+            }
+            (2, false) => {
+                if data.len() >= 6 {
+                    let chip_address = data[4];
+                    let reg_addr = RegisterAddress::from_repr(data[5])
+                        .ok_or(ProtocolError::InvalidRegisterAddress(data[5]))?;
+                    Command::ReadRegister {
+                        all: false,
+                        chip_address,
+                        register_address: reg_addr,
+                    }
+                } else {
+                    return Err(ProtocolError::InvalidFrame);
+                }
+            }
+            (1, true) => {
+                if data.len() >= 9 {
+                    let reg_addr = RegisterAddress::from_repr(data[4])
+                        .ok_or(ProtocolError::InvalidRegisterAddress(data[4]))?;
+                    let value_bytes: [u8; 4] = data[5..9].try_into().unwrap();
+                    let register = Register::decode(reg_addr, &value_bytes);
+                    Command::WriteRegister {
+                        all: true,
+                        chip_address: 0x00,
+                        register,
+                    }
+                } else {
+                    return Err(ProtocolError::InvalidFrame);
+                }
+            }
+            (2, true) => {
+                if data.len() >= 5 {
+                    let reg_addr = RegisterAddress::from_repr(data[4])
+                        .ok_or(ProtocolError::InvalidRegisterAddress(data[4]))?;
+                    Command::ReadRegister {
+                        all: true,
+                        chip_address: 0x00,
+                        register_address: reg_addr,
+                    }
+                } else {
+                    return Err(ProtocolError::InvalidFrame);
+                }
+            }
+            (3, false) => Command::ChainInactive,
+            _ => return Err(ProtocolError::InvalidFrame),
+        };
+
+        Ok((command, crc_valid))
     }
 }
 
