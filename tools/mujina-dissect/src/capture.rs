@@ -1,7 +1,7 @@
 //! Saleae Logic 2 CSV capture parsing.
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::path::Path;
 
 /// Raw event from Saleae Logic 2 CSV export
@@ -10,7 +10,9 @@ pub struct RawEvent {
     pub name: String,
     #[serde(rename = "type")]
     pub event_type: String,
+    #[serde(deserialize_with = "deserialize_timestamp")]
     pub start_time: f64,
+    #[serde(deserialize_with = "deserialize_timestamp")]
     pub duration: f64,
     pub data: Option<String>,
     pub error: Option<String>,
@@ -266,5 +268,35 @@ impl SerialDeduplicator {
         }
 
         true
+    }
+}
+
+/// Custom deserializer for timestamps that handles both numeric and ISO format
+fn deserialize_timestamp<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    // Try to deserialize as a string first, then as f64
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum TimeValue {
+        String(String),
+        Float(f64),
+    }
+
+    match TimeValue::deserialize(deserializer)? {
+        TimeValue::Float(f) => Ok(f),
+        TimeValue::String(s) => {
+            // Try to parse as ISO datetime
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&s) {
+                // Convert to Unix timestamp (seconds since epoch)
+                Ok(dt.timestamp() as f64 + dt.timestamp_subsec_nanos() as f64 / 1_000_000_000.0)
+            } else {
+                // Try to parse as plain float
+                s.parse::<f64>().map_err(D::Error::custom)
+            }
+        }
     }
 }
