@@ -56,6 +56,7 @@ All frames follow this basic structure:
 - **Preamble**: `0xAA 0x55` (2 bytes, reversed from commands)
 - **Payload**: Response-specific data
 - **CRC**: CRC5 in last byte (bits 0-4), with response type in bits 5-7
+  - Confirmed: Response frames use CRC5 validation (verified in test cases)
 
 ## Byte Order (Endianness)
 
@@ -86,20 +87,20 @@ should be transmitted as-is without endianness conversion
 The Type/Flags byte (3rd byte in command frames) encodes multiple fields:
 
 ```
-Bit 7: TYPE (0=command, 1=work)  
-Bit 6: BROADCAST (0=single chip, 1=all chips)
-Bit 5: Always 0
-Bits 4-0: CMD value
+Bit 6: TYPE (1=register ops, 0=work)
+Bit 4: BROADCAST (0=single chip, 1=all chips)
+Bits 3-0: CMD value
+Bits 7,5: Reserved/undefined in observed examples
 ```
 
 Common Type/Flags values:
-- `0x40` = TYPE=0, BROADCAST=0, CMD=0 (set chip address)
-- `0x41` = TYPE=0, BROADCAST=0, CMD=1 (write register to specific chip)
-- `0x42` = TYPE=0, BROADCAST=0, CMD=2 (read register from specific chip)
-- `0x51` = TYPE=0, BROADCAST=1, CMD=1 (write register to all chips)
-- `0x52` = TYPE=0, BROADCAST=1, CMD=2 (read register from all chips - chip discovery)
-- `0x53` = TYPE=0, BROADCAST=1, CMD=3 (chain inactive - prepare for addressing)
-- `0x21` = TYPE=1, BROADCAST=0, CMD=1 (send work/job)
+- `0x40` = TYPE=1, BROADCAST=0, CMD=0 (set chip address)
+- `0x41` = TYPE=1, BROADCAST=0, CMD=1 (write register to specific chip)
+- `0x42` = TYPE=1, BROADCAST=0, CMD=2 (read register from specific chip)
+- `0x51` = TYPE=1, BROADCAST=1, CMD=1 (write register to all chips)
+- `0x52` = TYPE=1, BROADCAST=1, CMD=2 (read register from all chips - chip discovery)
+- `0x53` = TYPE=1, BROADCAST=1, CMD=3 (chain inactive - prepare for addressing)
+- `0x21` = TYPE=0, BROADCAST=0, CMD=1 (send work/job)
 
 ### Set Chip Address (CMD=0)
 Assigns an address to a chip in the serial chain.
