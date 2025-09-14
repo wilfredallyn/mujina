@@ -61,7 +61,7 @@ impl FrameAssembler {
         Self {
             direction,
             state: AssemblyState::Idle,
-            timeout_seconds: 0.001, // 1ms timeout between bytes
+            timeout_seconds: 0.005, // 5ms timeout between bytes (response frames may need more time)
             last_event_time: 0.0,
         }
     }
@@ -157,12 +157,9 @@ impl FrameAssembler {
                         }
                     }
                     Direction::ChipToHost => {
-                        // Response frame: heuristic based on typical sizes
-                        // Minimum response is 7 bytes (preamble + chip_id + reg + value + crc)
-                        // Maximum reasonable size is ~20 bytes
-                        // Common response lengths: 6, 7, 9, 10, 11
-                        data.len() >= 7
-                            && (data.len() >= 20 || matches!(data.len(), 6 | 7 | 9 | 10 | 11))
+                        // Response frame: should be 11 bytes according to protocol docs
+                        // Format: preamble(2) + reg_value(4) + chip_addr(1) + reg_addr(1) + unknown(2) + crc5(1) = 11 bytes
+                        data.len() >= 11
                     }
                 };
 
