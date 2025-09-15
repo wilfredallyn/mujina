@@ -12,6 +12,7 @@ use colored::Colorize;
 use mujina_miner::asic::bm13xx::crc::crc5_is_valid;
 use mujina_miner::asic::bm13xx::protocol::Command;
 use mujina_miner::peripheral::{emc2101, tps546};
+use std::collections::HashMap;
 use std::fmt;
 
 /// Dissected frame with decoded content
@@ -136,6 +137,12 @@ pub struct DissectedI2c {
     pub raw_data: Vec<u8>,
 }
 
+/// I2C device contexts for state tracking
+#[derive(Debug, Default)]
+pub struct I2cContexts {
+    pub tps546_contexts: HashMap<u8, tps546::protocol::Tps546Context>,
+}
+
 /// Known I2C devices
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum I2cDevice {
@@ -144,8 +151,11 @@ pub enum I2cDevice {
     Unknown,
 }
 
-/// Dissect an I2C operation
-pub fn dissect_i2c_operation(op: &I2cOperation) -> DissectedI2c {
+/// Dissect an I2C operation with context tracking
+pub fn dissect_i2c_operation_with_context(
+    op: &I2cOperation,
+    contexts: &mut I2cContexts,
+) -> DissectedI2c {
     let device = match op.address {
         0x4C => I2cDevice::Emc2101,
         0x24 => I2cDevice::Tps546,
@@ -161,7 +171,16 @@ pub fn dissect_i2c_operation(op: &I2cOperation) -> DissectedI2c {
                 emc2101::protocol::format_transaction(reg, data.map(|v| v.as_slice()), is_read)
             }
             I2cDevice::Tps546 => {
-                tps546::protocol::format_transaction(reg, data.map(|v| v.as_slice()), is_read)
+                let context = contexts
+                    .tps546_contexts
+                    .entry(op.address)
+                    .or_insert_with(Default::default);
+                tps546::protocol::format_transaction_with_context(
+                    reg,
+                    data.map(|v| v.as_slice()),
+                    is_read,
+                    context,
+                )
             }
             I2cDevice::Unknown => {
                 if let Some(data) = &op.read_data {

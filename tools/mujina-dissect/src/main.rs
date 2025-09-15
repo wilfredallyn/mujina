@@ -9,7 +9,7 @@ mod serial;
 use anyhow::{Context, Result};
 use capture::{BaudRate, CaptureEvent, CaptureReader, Channel};
 use clap::Parser;
-use dissect::{dissect_i2c_operation, dissect_serial_frame};
+use dissect::{dissect_i2c_operation_with_context, dissect_serial_frame, I2cContexts};
 use i2c::{group_transactions, I2cAssembler};
 use output::{OutputConfig, OutputEvent};
 use serial::{Direction, FrameAssembler, SerialFrame};
@@ -159,10 +159,11 @@ fn main() -> Result<()> {
             transactions.push(transaction);
         }
 
-        // Group transactions into operations
+        // Group transactions into operations with context tracking
         let operations = group_transactions(&transactions);
+        let mut i2c_contexts = I2cContexts::default();
         for op in operations {
-            let dissected = dissect_i2c_operation(&op);
+            let dissected = dissect_i2c_operation_with_context(&op, &mut i2c_contexts);
             all_events.push(OutputEvent::I2c(dissected));
         }
     }

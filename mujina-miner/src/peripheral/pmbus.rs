@@ -9,62 +9,339 @@
 use thiserror::Error;
 
 /// PMBus standard command codes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum PmbusCommand {
+    Operation = 0x01,
+    OnOffConfig = 0x02,
+    ClearFaults = 0x03,
+    Phase = 0x04,
+    Capability = 0x19,
+    VoutMode = 0x20,
+    VoutCommand = 0x21,
+    VoutMax = 0x24,
+    VoutMarginHigh = 0x25,
+    VoutMarginLow = 0x26,
+    VoutScaleLoop = 0x29,
+    VoutMin = 0x2B,
+    FrequencySwitch = 0x33,
+    VinOn = 0x35,
+    VinOff = 0x36,
+    Interleave = 0x37,
+    VoutOvFaultLimit = 0x40,
+    VoutOvWarnLimit = 0x42,
+    VoutUvWarnLimit = 0x43,
+    VoutUvFaultLimit = 0x44,
+    IoutOcFaultLimit = 0x46,
+    IoutOcFaultResponse = 0x47,
+    IoutOcWarnLimit = 0x4A,
+    OtFaultLimit = 0x4F,
+    OtFaultResponse = 0x50,
+    OtWarnLimit = 0x51,
+    VinOvFaultLimit = 0x55,
+    VinOvFaultResponse = 0x56,
+    VinUvWarnLimit = 0x58,
+    TonDelay = 0x60,
+    TonRise = 0x61,
+    TonMaxFaultLimit = 0x62,
+    TonMaxFaultResponse = 0x63,
+    ToffDelay = 0x64,
+    ToffFall = 0x65,
+    StatusWord = 0x79,
+    StatusVout = 0x7A,
+    StatusIout = 0x7B,
+    StatusInput = 0x7C,
+    StatusTemperature = 0x7D,
+    StatusCml = 0x7E,
+    StatusOther = 0x7F,
+    StatusMfrSpecific = 0x80,
+    ReadVin = 0x88,
+    ReadVout = 0x8B,
+    ReadIout = 0x8C,
+    ReadTemperature1 = 0x8D,
+    MfrId = 0x99,
+    MfrModel = 0x9A,
+    MfrRevision = 0x9B,
+    IcDeviceId = 0xAD,
+    CompensationConfig = 0xB1,
+    SyncConfig = 0xE4,
+    StackConfig = 0xEC,
+    PinDetectOverride = 0xEE,
+}
+
+impl PmbusCommand {
+    /// Get the command name as a string
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Operation => "OPERATION",
+            Self::OnOffConfig => "ON_OFF_CONFIG",
+            Self::ClearFaults => "CLEAR_FAULTS",
+            Self::Phase => "PHASE",
+            Self::Capability => "CAPABILITY",
+            Self::VoutMode => "VOUT_MODE",
+            Self::VoutCommand => "VOUT_COMMAND",
+            Self::VoutMax => "VOUT_MAX",
+            Self::VoutMarginHigh => "VOUT_MARGIN_HIGH",
+            Self::VoutMarginLow => "VOUT_MARGIN_LOW",
+            Self::VoutScaleLoop => "VOUT_SCALE_LOOP",
+            Self::VoutMin => "VOUT_MIN",
+            Self::FrequencySwitch => "FREQUENCY_SWITCH",
+            Self::VinOn => "VIN_ON",
+            Self::VinOff => "VIN_OFF",
+            Self::Interleave => "INTERLEAVE",
+            Self::VoutOvFaultLimit => "VOUT_OV_FAULT_LIMIT",
+            Self::VoutOvWarnLimit => "VOUT_OV_WARN_LIMIT",
+            Self::VoutUvWarnLimit => "VOUT_UV_WARN_LIMIT",
+            Self::VoutUvFaultLimit => "VOUT_UV_FAULT_LIMIT",
+            Self::IoutOcFaultLimit => "IOUT_OC_FAULT_LIMIT",
+            Self::IoutOcFaultResponse => "IOUT_OC_FAULT_RESPONSE",
+            Self::IoutOcWarnLimit => "IOUT_OC_WARN_LIMIT",
+            Self::OtFaultLimit => "OT_FAULT_LIMIT",
+            Self::OtFaultResponse => "OT_FAULT_RESPONSE",
+            Self::OtWarnLimit => "OT_WARN_LIMIT",
+            Self::VinOvFaultLimit => "VIN_OV_FAULT_LIMIT",
+            Self::VinOvFaultResponse => "VIN_OV_FAULT_RESPONSE",
+            Self::VinUvWarnLimit => "VIN_UV_WARN_LIMIT",
+            Self::TonDelay => "TON_DELAY",
+            Self::TonRise => "TON_RISE",
+            Self::TonMaxFaultLimit => "TON_MAX_FAULT_LIMIT",
+            Self::TonMaxFaultResponse => "TON_MAX_FAULT_RESPONSE",
+            Self::ToffDelay => "TOFF_DELAY",
+            Self::ToffFall => "TOFF_FALL",
+            Self::StatusWord => "STATUS_WORD",
+            Self::StatusVout => "STATUS_VOUT",
+            Self::StatusIout => "STATUS_IOUT",
+            Self::StatusInput => "STATUS_INPUT",
+            Self::StatusTemperature => "STATUS_TEMPERATURE",
+            Self::StatusCml => "STATUS_CML",
+            Self::StatusOther => "STATUS_OTHER",
+            Self::StatusMfrSpecific => "STATUS_MFR_SPECIFIC",
+            Self::ReadVin => "READ_VIN",
+            Self::ReadVout => "READ_VOUT",
+            Self::ReadIout => "READ_IOUT",
+            Self::ReadTemperature1 => "READ_TEMPERATURE_1",
+            Self::MfrId => "MFR_ID",
+            Self::MfrModel => "MFR_MODEL",
+            Self::MfrRevision => "MFR_REVISION",
+            Self::IcDeviceId => "IC_DEVICE_ID",
+            Self::CompensationConfig => "COMPENSATION_CONFIG",
+            Self::SyncConfig => "SYNC_CONFIG",
+            Self::StackConfig => "STACK_CONFIG",
+            Self::PinDetectOverride => "PIN_DETECT_OVERRIDE",
+        }
+    }
+
+    /// Convert from u8 command code to enum variant
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x01 => Some(Self::Operation),
+            0x02 => Some(Self::OnOffConfig),
+            0x03 => Some(Self::ClearFaults),
+            0x04 => Some(Self::Phase),
+            0x19 => Some(Self::Capability),
+            0x20 => Some(Self::VoutMode),
+            0x21 => Some(Self::VoutCommand),
+            0x24 => Some(Self::VoutMax),
+            0x25 => Some(Self::VoutMarginHigh),
+            0x26 => Some(Self::VoutMarginLow),
+            0x29 => Some(Self::VoutScaleLoop),
+            0x2B => Some(Self::VoutMin),
+            0x33 => Some(Self::FrequencySwitch),
+            0x35 => Some(Self::VinOn),
+            0x36 => Some(Self::VinOff),
+            0x37 => Some(Self::Interleave),
+            0x40 => Some(Self::VoutOvFaultLimit),
+            0x42 => Some(Self::VoutOvWarnLimit),
+            0x43 => Some(Self::VoutUvWarnLimit),
+            0x44 => Some(Self::VoutUvFaultLimit),
+            0x46 => Some(Self::IoutOcFaultLimit),
+            0x47 => Some(Self::IoutOcFaultResponse),
+            0x4A => Some(Self::IoutOcWarnLimit),
+            0x4F => Some(Self::OtFaultLimit),
+            0x50 => Some(Self::OtFaultResponse),
+            0x51 => Some(Self::OtWarnLimit),
+            0x55 => Some(Self::VinOvFaultLimit),
+            0x56 => Some(Self::VinOvFaultResponse),
+            0x58 => Some(Self::VinUvWarnLimit),
+            0x60 => Some(Self::TonDelay),
+            0x61 => Some(Self::TonRise),
+            0x62 => Some(Self::TonMaxFaultLimit),
+            0x63 => Some(Self::TonMaxFaultResponse),
+            0x64 => Some(Self::ToffDelay),
+            0x65 => Some(Self::ToffFall),
+            0x79 => Some(Self::StatusWord),
+            0x7A => Some(Self::StatusVout),
+            0x7B => Some(Self::StatusIout),
+            0x7C => Some(Self::StatusInput),
+            0x7D => Some(Self::StatusTemperature),
+            0x7E => Some(Self::StatusCml),
+            0x7F => Some(Self::StatusOther),
+            0x80 => Some(Self::StatusMfrSpecific),
+            0x88 => Some(Self::ReadVin),
+            0x8B => Some(Self::ReadVout),
+            0x8C => Some(Self::ReadIout),
+            0x8D => Some(Self::ReadTemperature1),
+            0x99 => Some(Self::MfrId),
+            0x9A => Some(Self::MfrModel),
+            0x9B => Some(Self::MfrRevision),
+            0xAD => Some(Self::IcDeviceId),
+            0xB1 => Some(Self::CompensationConfig),
+            0xE4 => Some(Self::SyncConfig),
+            0xEC => Some(Self::StackConfig),
+            0xEE => Some(Self::PinDetectOverride),
+            _ => None,
+        }
+    }
+
+    /// Convert to u8 command code
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
+impl std::fmt::Display for PmbusCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+impl From<PmbusCommand> for u8 {
+    fn from(cmd: PmbusCommand) -> Self {
+        cmd.as_u8()
+    }
+}
+
+impl std::str::FromStr for PmbusCommand {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "OPERATION" => Ok(Self::Operation),
+            "ON_OFF_CONFIG" => Ok(Self::OnOffConfig),
+            "CLEAR_FAULTS" => Ok(Self::ClearFaults),
+            "PHASE" => Ok(Self::Phase),
+            "CAPABILITY" => Ok(Self::Capability),
+            "VOUT_MODE" => Ok(Self::VoutMode),
+            "VOUT_COMMAND" => Ok(Self::VoutCommand),
+            "VOUT_MAX" => Ok(Self::VoutMax),
+            "VOUT_MARGIN_HIGH" => Ok(Self::VoutMarginHigh),
+            "VOUT_MARGIN_LOW" => Ok(Self::VoutMarginLow),
+            "VOUT_SCALE_LOOP" => Ok(Self::VoutScaleLoop),
+            "VOUT_MIN" => Ok(Self::VoutMin),
+            "FREQUENCY_SWITCH" => Ok(Self::FrequencySwitch),
+            "VIN_ON" => Ok(Self::VinOn),
+            "VIN_OFF" => Ok(Self::VinOff),
+            "INTERLEAVE" => Ok(Self::Interleave),
+            "VOUT_OV_FAULT_LIMIT" => Ok(Self::VoutOvFaultLimit),
+            "VOUT_OV_WARN_LIMIT" => Ok(Self::VoutOvWarnLimit),
+            "VOUT_UV_WARN_LIMIT" => Ok(Self::VoutUvWarnLimit),
+            "VOUT_UV_FAULT_LIMIT" => Ok(Self::VoutUvFaultLimit),
+            "IOUT_OC_FAULT_LIMIT" => Ok(Self::IoutOcFaultLimit),
+            "IOUT_OC_FAULT_RESPONSE" => Ok(Self::IoutOcFaultResponse),
+            "IOUT_OC_WARN_LIMIT" => Ok(Self::IoutOcWarnLimit),
+            "OT_FAULT_LIMIT" => Ok(Self::OtFaultLimit),
+            "OT_FAULT_RESPONSE" => Ok(Self::OtFaultResponse),
+            "OT_WARN_LIMIT" => Ok(Self::OtWarnLimit),
+            "VIN_OV_FAULT_LIMIT" => Ok(Self::VinOvFaultLimit),
+            "VIN_OV_FAULT_RESPONSE" => Ok(Self::VinOvFaultResponse),
+            "VIN_UV_WARN_LIMIT" => Ok(Self::VinUvWarnLimit),
+            "TON_DELAY" => Ok(Self::TonDelay),
+            "TON_RISE" => Ok(Self::TonRise),
+            "TON_MAX_FAULT_LIMIT" => Ok(Self::TonMaxFaultLimit),
+            "TON_MAX_FAULT_RESPONSE" => Ok(Self::TonMaxFaultResponse),
+            "TOFF_DELAY" => Ok(Self::ToffDelay),
+            "TOFF_FALL" => Ok(Self::ToffFall),
+            "STATUS_WORD" => Ok(Self::StatusWord),
+            "STATUS_VOUT" => Ok(Self::StatusVout),
+            "STATUS_IOUT" => Ok(Self::StatusIout),
+            "STATUS_INPUT" => Ok(Self::StatusInput),
+            "STATUS_TEMPERATURE" => Ok(Self::StatusTemperature),
+            "STATUS_CML" => Ok(Self::StatusCml),
+            "STATUS_OTHER" => Ok(Self::StatusOther),
+            "STATUS_MFR_SPECIFIC" => Ok(Self::StatusMfrSpecific),
+            "READ_VIN" => Ok(Self::ReadVin),
+            "READ_VOUT" => Ok(Self::ReadVout),
+            "READ_IOUT" => Ok(Self::ReadIout),
+            "READ_TEMPERATURE_1" => Ok(Self::ReadTemperature1),
+            "MFR_ID" => Ok(Self::MfrId),
+            "MFR_MODEL" => Ok(Self::MfrModel),
+            "MFR_REVISION" => Ok(Self::MfrRevision),
+            "IC_DEVICE_ID" => Ok(Self::IcDeviceId),
+            "COMPENSATION_CONFIG" => Ok(Self::CompensationConfig),
+            "SYNC_CONFIG" => Ok(Self::SyncConfig),
+            "STACK_CONFIG" => Ok(Self::StackConfig),
+            "PIN_DETECT_OVERRIDE" => Ok(Self::PinDetectOverride),
+            _ => Err("Unknown PMBus command name"),
+        }
+    }
+}
+
+/// Get command name from u8 code (for protocol dissection compatibility)
+pub fn command_name(cmd: u8) -> &'static str {
+    PmbusCommand::from_u8(cmd)
+        .map(|c| c.name())
+        .unwrap_or("UNKNOWN")
+}
+
+/// Backward compatibility module - provides constants for migration
 pub mod commands {
-    pub const OPERATION: u8 = 0x01;
-    pub const ON_OFF_CONFIG: u8 = 0x02;
-    pub const CLEAR_FAULTS: u8 = 0x03;
-    pub const PHASE: u8 = 0x04;
-    pub const CAPABILITY: u8 = 0x19;
-    pub const VOUT_MODE: u8 = 0x20;
-    pub const VOUT_COMMAND: u8 = 0x21;
-    pub const VOUT_MAX: u8 = 0x24;
-    pub const VOUT_MARGIN_HIGH: u8 = 0x25;
-    pub const VOUT_MARGIN_LOW: u8 = 0x26;
-    pub const VOUT_SCALE_LOOP: u8 = 0x29;
-    pub const VOUT_MIN: u8 = 0x2B;
-    pub const FREQUENCY_SWITCH: u8 = 0x33;
-    pub const VIN_ON: u8 = 0x35;
-    pub const VIN_OFF: u8 = 0x36;
-    pub const VOUT_OV_FAULT_LIMIT: u8 = 0x40;
-    pub const VOUT_OV_WARN_LIMIT: u8 = 0x42;
-    pub const VOUT_UV_WARN_LIMIT: u8 = 0x43;
-    pub const VOUT_UV_FAULT_LIMIT: u8 = 0x44;
-    pub const IOUT_OC_FAULT_LIMIT: u8 = 0x46;
-    pub const IOUT_OC_FAULT_RESPONSE: u8 = 0x47;
-    pub const IOUT_OC_WARN_LIMIT: u8 = 0x4A;
-    pub const OT_FAULT_LIMIT: u8 = 0x4F;
-    pub const OT_FAULT_RESPONSE: u8 = 0x50;
-    pub const OT_WARN_LIMIT: u8 = 0x51;
-    pub const VIN_OV_FAULT_LIMIT: u8 = 0x55;
-    pub const VIN_OV_FAULT_RESPONSE: u8 = 0x56;
-    pub const VIN_UV_WARN_LIMIT: u8 = 0x58;
-    pub const TON_DELAY: u8 = 0x60;
-    pub const TON_RISE: u8 = 0x61;
-    pub const TON_MAX_FAULT_LIMIT: u8 = 0x62;
-    pub const TON_MAX_FAULT_RESPONSE: u8 = 0x63;
-    pub const TOFF_DELAY: u8 = 0x64;
-    pub const TOFF_FALL: u8 = 0x65;
-    pub const STATUS_WORD: u8 = 0x79;
-    pub const STATUS_VOUT: u8 = 0x7A;
-    pub const STATUS_IOUT: u8 = 0x7B;
-    pub const STATUS_INPUT: u8 = 0x7C;
-    pub const STATUS_TEMPERATURE: u8 = 0x7D;
-    pub const STATUS_CML: u8 = 0x7E;
-    pub const STATUS_OTHER: u8 = 0x7F;
-    pub const STATUS_MFR_SPECIFIC: u8 = 0x80;
-    pub const READ_VIN: u8 = 0x88;
-    pub const READ_VOUT: u8 = 0x8B;
-    pub const READ_IOUT: u8 = 0x8C;
-    pub const READ_TEMPERATURE_1: u8 = 0x8D;
-    pub const MFR_ID: u8 = 0x99;
-    pub const MFR_MODEL: u8 = 0x9A;
-    pub const MFR_REVISION: u8 = 0x9B;
-    pub const IC_DEVICE_ID: u8 = 0xAD;
-    pub const COMPENSATION_CONFIG: u8 = 0xB1;
-    pub const SYNC_CONFIG: u8 = 0xE4;
-    pub const STACK_CONFIG: u8 = 0xEC;
-    pub const PIN_DETECT_OVERRIDE: u8 = 0xEE;
-    pub const INTERLEAVE: u8 = 0x37;
+    use super::PmbusCommand;
+
+    pub const OPERATION: u8 = PmbusCommand::Operation as u8;
+    pub const ON_OFF_CONFIG: u8 = PmbusCommand::OnOffConfig as u8;
+    pub const CLEAR_FAULTS: u8 = PmbusCommand::ClearFaults as u8;
+    pub const PHASE: u8 = PmbusCommand::Phase as u8;
+    pub const CAPABILITY: u8 = PmbusCommand::Capability as u8;
+    pub const VOUT_MODE: u8 = PmbusCommand::VoutMode as u8;
+    pub const VOUT_COMMAND: u8 = PmbusCommand::VoutCommand as u8;
+    pub const VOUT_MAX: u8 = PmbusCommand::VoutMax as u8;
+    pub const VOUT_MARGIN_HIGH: u8 = PmbusCommand::VoutMarginHigh as u8;
+    pub const VOUT_MARGIN_LOW: u8 = PmbusCommand::VoutMarginLow as u8;
+    pub const VOUT_SCALE_LOOP: u8 = PmbusCommand::VoutScaleLoop as u8;
+    pub const VOUT_MIN: u8 = PmbusCommand::VoutMin as u8;
+    pub const FREQUENCY_SWITCH: u8 = PmbusCommand::FrequencySwitch as u8;
+    pub const VIN_ON: u8 = PmbusCommand::VinOn as u8;
+    pub const VIN_OFF: u8 = PmbusCommand::VinOff as u8;
+    pub const INTERLEAVE: u8 = PmbusCommand::Interleave as u8;
+    pub const VOUT_OV_FAULT_LIMIT: u8 = PmbusCommand::VoutOvFaultLimit as u8;
+    pub const VOUT_OV_WARN_LIMIT: u8 = PmbusCommand::VoutOvWarnLimit as u8;
+    pub const VOUT_UV_WARN_LIMIT: u8 = PmbusCommand::VoutUvWarnLimit as u8;
+    pub const VOUT_UV_FAULT_LIMIT: u8 = PmbusCommand::VoutUvFaultLimit as u8;
+    pub const IOUT_OC_FAULT_LIMIT: u8 = PmbusCommand::IoutOcFaultLimit as u8;
+    pub const IOUT_OC_FAULT_RESPONSE: u8 = PmbusCommand::IoutOcFaultResponse as u8;
+    pub const IOUT_OC_WARN_LIMIT: u8 = PmbusCommand::IoutOcWarnLimit as u8;
+    pub const OT_FAULT_LIMIT: u8 = PmbusCommand::OtFaultLimit as u8;
+    pub const OT_FAULT_RESPONSE: u8 = PmbusCommand::OtFaultResponse as u8;
+    pub const OT_WARN_LIMIT: u8 = PmbusCommand::OtWarnLimit as u8;
+    pub const VIN_OV_FAULT_LIMIT: u8 = PmbusCommand::VinOvFaultLimit as u8;
+    pub const VIN_OV_FAULT_RESPONSE: u8 = PmbusCommand::VinOvFaultResponse as u8;
+    pub const VIN_UV_WARN_LIMIT: u8 = PmbusCommand::VinUvWarnLimit as u8;
+    pub const TON_DELAY: u8 = PmbusCommand::TonDelay as u8;
+    pub const TON_RISE: u8 = PmbusCommand::TonRise as u8;
+    pub const TON_MAX_FAULT_LIMIT: u8 = PmbusCommand::TonMaxFaultLimit as u8;
+    pub const TON_MAX_FAULT_RESPONSE: u8 = PmbusCommand::TonMaxFaultResponse as u8;
+    pub const TOFF_DELAY: u8 = PmbusCommand::ToffDelay as u8;
+    pub const TOFF_FALL: u8 = PmbusCommand::ToffFall as u8;
+    pub const STATUS_WORD: u8 = PmbusCommand::StatusWord as u8;
+    pub const STATUS_VOUT: u8 = PmbusCommand::StatusVout as u8;
+    pub const STATUS_IOUT: u8 = PmbusCommand::StatusIout as u8;
+    pub const STATUS_INPUT: u8 = PmbusCommand::StatusInput as u8;
+    pub const STATUS_TEMPERATURE: u8 = PmbusCommand::StatusTemperature as u8;
+    pub const STATUS_CML: u8 = PmbusCommand::StatusCml as u8;
+    pub const STATUS_OTHER: u8 = PmbusCommand::StatusOther as u8;
+    pub const STATUS_MFR_SPECIFIC: u8 = PmbusCommand::StatusMfrSpecific as u8;
+    pub const READ_VIN: u8 = PmbusCommand::ReadVin as u8;
+    pub const READ_VOUT: u8 = PmbusCommand::ReadVout as u8;
+    pub const READ_IOUT: u8 = PmbusCommand::ReadIout as u8;
+    pub const READ_TEMPERATURE_1: u8 = PmbusCommand::ReadTemperature1 as u8;
+    pub const MFR_ID: u8 = PmbusCommand::MfrId as u8;
+    pub const MFR_MODEL: u8 = PmbusCommand::MfrModel as u8;
+    pub const MFR_REVISION: u8 = PmbusCommand::MfrRevision as u8;
+    pub const IC_DEVICE_ID: u8 = PmbusCommand::IcDeviceId as u8;
+    pub const COMPENSATION_CONFIG: u8 = PmbusCommand::CompensationConfig as u8;
+    pub const SYNC_CONFIG: u8 = PmbusCommand::SyncConfig as u8;
+    pub const STACK_CONFIG: u8 = PmbusCommand::StackConfig as u8;
+    pub const PIN_DETECT_OVERRIDE: u8 = PmbusCommand::PinDetectOverride as u8;
 }
 
 /// STATUS_WORD bits (PMBus specification section 17.2)
