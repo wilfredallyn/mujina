@@ -163,24 +163,30 @@ pub fn dissect_i2c_operation_with_context(
     };
 
     let operation = if let Some(reg) = op.register {
-        let data = op.read_data.as_ref().or(op.write_data.as_ref());
         let is_read = op.read_data.is_some();
 
+        // For write operations, skip the first byte (command) to get actual data
+        // For read operations, use all data
+        let data = if is_read {
+            op.read_data.as_ref().map(|v| v.as_slice())
+        } else {
+            op.write_data.as_ref().and_then(|v| {
+                if v.len() > 1 {
+                    Some(&v[1..]) // Skip command byte
+                } else {
+                    None // Command-only write
+                }
+            })
+        };
+
         match device {
-            I2cDevice::Emc2101 => {
-                emc2101::protocol::format_transaction(reg, data.map(|v| v.as_slice()), is_read)
-            }
+            I2cDevice::Emc2101 => emc2101::protocol::format_transaction(reg, data, is_read),
             I2cDevice::Tps546 => {
                 let context = contexts
                     .tps546_contexts
                     .entry(op.address)
                     .or_insert_with(Default::default);
-                tps546::protocol::format_transaction_with_context(
-                    reg,
-                    data.map(|v| v.as_slice()),
-                    is_read,
-                    context,
-                )
+                tps546::protocol::format_transaction_with_context(reg, data, is_read, context)
             }
             I2cDevice::Unknown => {
                 if let Some(data) = &op.read_data {

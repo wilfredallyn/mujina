@@ -33,15 +33,10 @@ pub mod protocol {
             } else if id == DEVICE_ID3 {
                 "TPS546D24S"
             } else {
-                "Unknown"
+                "Unknown device"
             };
 
-            let ascii: String = id
-                .iter()
-                .map(|&b| if b.is_ascii_graphic() { b as char } else { '.' })
-                .collect();
-
-            format!("\"{}\" ({})", ascii, model)
+            format!("{:02x?} ({})", data, model)
         } else {
             format!("{:02x?}", data)
         }
@@ -194,6 +189,9 @@ pub mod protocol {
                 PmbusCommand::Phase => decode_phase(data),
                 PmbusCommand::Capability => decode_capability(data),
 
+                // Data-less command that returns status
+                PmbusCommand::ClearFaults => decode_clear_faults(data),
+
                 // Fault response bytes
                 PmbusCommand::VinOvFaultResponse
                 | PmbusCommand::IoutOcFaultResponse
@@ -284,8 +282,10 @@ pub mod protocol {
                 | PmbusCommand::IoutOcWarnLimit
                 | PmbusCommand::IoutOcFaultLimit
                 | PmbusCommand::OtWarnLimit
-                | PmbusCommand::OtFaultLimit
-                | PmbusCommand::FrequencySwitch => decode_write_linear11(data),
+                | PmbusCommand::OtFaultLimit => decode_write_linear11(data),
+
+                // Frequency in kHz (Linear11 format)
+                PmbusCommand::FrequencySwitch => decode_write_frequency(data),
 
                 // Two-byte Linear16 values (VOUT commands - need VOUT_MODE context)
                 PmbusCommand::VoutCommand
@@ -336,23 +336,31 @@ pub mod protocol {
             return "empty".to_string();
         }
 
-        // First byte might be length, or it might be part of the string
-        let text: String = data
-            .iter()
-            .skip_while(|&&b| b == 0) // Skip null bytes
-            .map(|&b| {
-                if b.is_ascii_graphic() || b == b' ' {
-                    b as char
-                } else {
-                    '.'
-                }
-            })
-            .collect();
-
-        if text.is_empty() {
-            format!("{:02x?}", data)
+        // PMBus block reads have length byte first, then data
+        let actual_data = if data.len() > 1 && data[0] as usize == data.len() - 1 {
+            &data[1..] // Skip length byte
         } else {
-            format!("\"{}\"", text.trim())
+            data
+        };
+
+        // Check if data contains printable ASCII
+        let has_printable = actual_data.iter().any(|&b| b.is_ascii_graphic());
+
+        if has_printable {
+            let text: String = actual_data
+                .iter()
+                .map(|&b| {
+                    if b.is_ascii_graphic() || b == b' ' {
+                        b as char
+                    } else {
+                        '.'
+                    }
+                })
+                .collect();
+            format!("{:02x?} (\"{}\")", data, text.trim())
+        } else {
+            // All non-printable, just show hex
+            format!("{:02x?} (binary data)", data)
         }
     }
 
@@ -520,10 +528,10 @@ pub mod protocol {
     fn decode_phase(data: &[u8]) -> String {
         if data.len() >= 1 {
             let phase = data[0];
-            if phase == 0xFF {
-                format!("0x{:02x} (all phases)", phase)
-            } else {
-                format!("0x{:02x} (phase {})", phase, phase)
+            match phase {
+                0xFF => format!("[{:02x}] (all phases)", phase),
+                0x00 => format!("[{:02x}] (master/phase 0)", phase),
+                p => format!("[{:02x}] (phase {})", phase, p),
             }
         } else {
             format!("{:02x?}", data)
@@ -583,6 +591,27 @@ pub mod protocol {
             let value = u16::from_le_bytes([data[0], data[1]]);
             let time_ms = pmbus::Linear11::to_int(value);
             format!("{:02x?} ({}ms)", data, time_ms)
+        } else {
+            format!("{:02x?}", data)
+        }
+    }
+
+    /// Decode CLEAR_FAULTS command (data-less command that clears all fault bits)
+    fn decode_clear_faults(data: &[u8]) -> String {
+        if data.is_empty() {
+            "data-less command (clears all fault bits)".to_string()
+        } else {
+            // Shouldn't have data, but show what we got
+            format!("{:02x?} (unexpected data for CLEAR_FAULTS)", data)
+        }
+    }
+
+    /// Decode FREQUENCY_SWITCH (Linear11 format, units in kHz)
+    fn decode_write_frequency(data: &[u8]) -> String {
+        if data.len() >= 2 {
+            let value = u16::from_le_bytes([data[0], data[1]]);
+            let freq_khz = pmbus::Linear11::to_float(value);
+            format!("{:02x?} ({:.0}kHz)", data, freq_khz)
         } else {
             format!("{:02x?}", data)
         }
