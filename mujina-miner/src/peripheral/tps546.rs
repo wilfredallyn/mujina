@@ -299,6 +299,8 @@ pub mod protocol {
                     }
                 }
 
+                PmbusCommand::Phase => decode_phase(data),
+
                 // Two-byte Linear11 values (voltages, currents, frequencies)
                 PmbusCommand::VinOn
                 | PmbusCommand::VinOff
