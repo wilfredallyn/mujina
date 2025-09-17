@@ -80,25 +80,25 @@ pub mod protocol {
         if is_read {
             if let Some(data) = data {
                 let decoded = decode_read_value_with_context(cmd, data, context);
-                format!("READ {}={}", cmd_name, decoded)
+                format!("⟶ READ {}={}", cmd_name, decoded)
             } else {
-                format!("READ {}", cmd_name)
+                format!("⟶ READ {}", cmd_name)
             }
         } else {
             if let Some(data) = data {
                 let decoded = decode_write_value_with_context(cmd, data, context);
-                format!("WRITE {}={}", cmd_name, decoded)
+                format!("⟵ WRITE {}={}", cmd_name, decoded)
             } else {
                 // Data-less command - only use generic description for truly data-less commands
                 if let Some(command) = PmbusCommand::from_u8(cmd) {
                     match command {
                         PmbusCommand::ClearFaults => {
-                            format!("WRITE {} (clears all fault status bits)", cmd_name)
+                            format!("⟵ WRITE {} (clears all fault status bits)", cmd_name)
                         }
-                        _ => format!("WRITE {} (register select)", cmd_name),
+                        _ => format!("⟵ WRITE {} (register select)", cmd_name),
                     }
                 } else {
-                    format!("WRITE CMD[0x{:02x}] (unknown command)", cmd)
+                    format!("⟵ WRITE CMD[0x{:02x}] (unknown command)", cmd)
                 }
             }
         }

@@ -137,12 +137,12 @@ pub mod protocol {
                         ),
                         _ => format!("0x{:02x}", data[0]),
                     };
-                    format!("READ {}={}", reg_name, decoded)
+                    format!("⟶ READ {}={}", reg_name, decoded)
                 } else {
-                    format!("READ {}={:02x?}", reg_name, data)
+                    format!("⟶ READ {}={:02x?}", reg_name, data)
                 }
             } else {
-                format!("READ {}", reg_name)
+                format!("⟶ READ {}", reg_name)
             }
         } else {
             if let Some(data) = data {
@@ -151,12 +151,12 @@ pub mod protocol {
                         regs::FAN_SETTING | regs::FAN_MIN_DRIVE => decode_pwm_percent(data[0]),
                         _ => format!("0x{:02x}", data[0]),
                     };
-                    format!("WRITE {}={}", reg_name, decoded)
+                    format!("⟵ WRITE {}={}", reg_name, decoded)
                 } else {
-                    format!("WRITE {}={:02x?}", reg_name, data)
+                    format!("⟵ WRITE {}={:02x?}", reg_name, data)
                 }
             } else {
-                format!("WRITE REG[0x{:02x}]", reg)
+                format!("⟵ WRITE REG[0x{:02x}]", reg)
             }
         }
     }
