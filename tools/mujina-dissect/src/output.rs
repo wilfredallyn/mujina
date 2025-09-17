@@ -58,17 +58,65 @@ pub fn format_serial_frame(frame: &DissectedFrame, config: &OutputConfig) -> Str
     result
 }
 
+/// Get a consistent color for an I2C address
+fn get_address_color(address: u8) -> colored::Color {
+    // Use a simple hash to map addresses to a fixed set of colors
+    // This ensures the same address always gets the same color
+    const COLORS: &[colored::Color] = &[
+        colored::Color::Green,
+        colored::Color::Yellow,
+        colored::Color::Blue,
+        colored::Color::Magenta,
+        colored::Color::Cyan,
+        colored::Color::Red,
+        colored::Color::BrightGreen,
+        colored::Color::BrightYellow,
+        colored::Color::BrightBlue,
+        colored::Color::BrightMagenta,
+        colored::Color::BrightCyan,
+        colored::Color::BrightRed,
+    ];
+
+    // Better hash: mix the bits to avoid clustering similar addresses
+    // Multiply by a prime and XOR the upper bits for better distribution
+    let hash = (address.wrapping_mul(37)) ^ (address >> 4);
+    let index = (hash as usize) % COLORS.len();
+    COLORS[index]
+}
+
 /// Format an I2C operation
 pub fn format_i2c_operation(op: &DissectedI2c, config: &OutputConfig) -> String {
     let timestamp = format_timestamp(op.timestamp, config);
 
-    let device_str = match op.device {
-        I2cDevice::Emc2101 => format!("EMC2101@0x{:02x}", op.address),
-        I2cDevice::Tps546 => format!("TPS546@0x{:02x}", op.address),
-        I2cDevice::Unknown => format!("Device@0x{:02x}", op.address),
+    // Format device string with consistent color based on address
+    let device_str = if config.use_color {
+        let device_name = match op.device {
+            I2cDevice::Emc2101 => format!("EMC2101@0x{:02x}", op.address),
+            I2cDevice::Tps546 => format!("TPS546@0x{:02x}", op.address),
+            I2cDevice::Unknown => format!("Device@0x{:02x}", op.address),
+        };
+
+        // Apply color based on address for consistency
+        let color = get_address_color(op.address);
+        format!("{}", device_name.color(color))
+    } else {
+        match op.device {
+            I2cDevice::Emc2101 => format!("EMC2101@0x{:02x}", op.address),
+            I2cDevice::Tps546 => format!("TPS546@0x{:02x}", op.address),
+            I2cDevice::Unknown => format!("Device@0x{:02x}", op.address),
+        }
     };
 
     let mut result = format!("[{}] I2C: {} {}", timestamp, device_str, op.operation);
+
+    // Add NAK indicator if the transaction was NAKed
+    if op.was_naked {
+        if config.use_color {
+            result.push_str(&format!(" {}", "[NAK]".red().bold()));
+        } else {
+            result.push_str(" [NAK]");
+        }
+    }
 
     if config.show_raw_hex && !op.raw_data.is_empty() {
         result.push_str(&format!(" [{}]", format_hex(&op.raw_data)));
