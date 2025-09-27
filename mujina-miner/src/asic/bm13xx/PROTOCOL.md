@@ -318,7 +318,7 @@ Key registers used across BM13xx chips:
 | 0x08 | PLL_DIVIDER | Frequency control registers for hash clock |
 | 0x10 | NONCE_RANGE | Controls nonce search range per core |
 | 0x14 | TICKET_MASK | Difficulty mask for share submission |
-| 0x18 | MISC_CONTROL | UART settings and miscellaneous control |
+| 0x18 | MISC_CONTROL | UART settings and GPIO pin configuration |
 | 0x28 | UART_BAUD | UART baud rate configuration |
 | 0x2C | UART_RELAY | UART relay configuration (multi-chip chains) |
 | 0x3C | CORE_REGISTER | Core configuration and control |
@@ -360,8 +360,19 @@ Controls nonce search space distribution (format not fully documented):
 #### 0x14 - TICKET_MASK (Difficulty)
 Sets the difficulty mask (4 bytes, little-endian):
 - Each byte is bit-reversed
-- Example: difficulty 256 = 0xFF000000 → transmitted as [0xFF, 0x00, 0x00, 
+- Example: difficulty 256 = 0xFF000000 → transmitted as [0xFF, 0x00, 0x00,
 0x00]
+
+#### 0x18 - MISC_CONTROL
+UART and GPIO pin configuration (32-bit register, documented in BM1366):
+- **Reset value**: `0x0000C100`
+- **Upper 16 bits (0xC100)**: Always preserved across implementations
+- **Lower 16 bits**: Chip-specific configuration
+- Common values:
+  - BM1362: `0x00C100B0` (both broadcast and per-chip)
+  - BM1366/68: `0x00C10FFF` broadcast, `0x00C100F0` per-chip
+  - BM1370: `0x00C100F0` (S21 Pro) or `0x00C10FFF` (S21)
+- Lower bytes likely control UART pin routing and GPIO functions
 
 #### 0x2C - UART_RELAY
 Controls UART signal relay in multi-chip chains (4 bytes):
@@ -370,16 +381,18 @@ Controls UART signal relay in multi-chip chains (4 bytes):
 - Example values from S21 Pro: 0x00130003, 0x00180003, etc.
 
 #### 0x3C - CORE_REGISTER
-Requires multiple writes during initialization. Values differ by chip type:
+Indirect access to core registers (documented in BM1397):
+- **Format**: Upper 16 bits = core register address, Lower 16 bits = value
+- **Bit 31**: Always set (0x80) in observed implementations
+- Initialization requires 2-3 sequential writes with chip-specific magic values:
 
-**BM1362 sequence:**
-1. Write 0x80008540
-2. Write 0x80008008
+**Broadcast sequence** (2 writes):
+- BM1362: `0x80008540`, `0x80008008`
+- BM1366: `0x80008540`, `0x80008020`
+- BM1368/70: `0x80008B00`, `0x8000800C` or `0x80008018`
 
-**BM1370 sequence:**
-1. Write 0x80008B00
-2. Write 0x8000800C
-3. Write 0x800082AA (per chip configuration)
+**Per-chip sequence** (adds 3rd write):
+- All chips add: `0x800082AA` as final write
 
 #### 0x54 - ANALOG_MUX
 Controls analog multiplexer, possibly for temperature sensing:
@@ -407,10 +420,15 @@ Controls version rolling for AsicBoost optimization (32-bit register):
   - Stratum: `0x3FFF0090` (from version_mask=0x1FFFE000)
 
 #### 0xA8 - INIT_CONTROL
-Initialization control register with chip-specific values:
-- BM1362: 0x00000000
-- BM1370 single-chip: 0x00070000
-- BM1370 multi-chip: 0x00070000 initially, then 0xF0010700 per chip
+Initialization control register requiring specific magic values (purpose undocumented):
+- **Initial broadcast** (all chips):
+  - BM1362: `0x00000000`
+  - BM1366/68/70: `0x00070000`
+- **Per-chip configuration**:
+  - BM1362: `0x02000000`
+  - BM1366/68/70: `0xF0010700`
+- Written twice: first broadcast to all chips, then individually to each chip
+- Values appear fixed across all implementations, suggesting required magic values
 
 #### 0xB9 - MISC_SETTINGS (BM1370 only)
 Undocumented miscellaneous settings register:
