@@ -75,7 +75,7 @@ pub fn format_serial_frame(frame: &DissectedFrame, config: &OutputConfig) -> Str
         }
     };
 
-    let mut result = format!("[{}] {}: {}", timestamp, direction_str, content_str);
+    let mut result = format!("{} {}: {}", timestamp, direction_str, content_str);
 
     if frame.crc_status != CrcStatus::NotChecked {
         result.push_str(&format!(" [{}]", frame.crc_status));
@@ -160,7 +160,17 @@ pub fn format_i2c_operation(op: &DissectedI2c, config: &OutputConfig) -> String 
         }
     };
 
-    let mut result = format!("[{}] I2C: {} {}", timestamp, device_str, op.operation);
+    let i2c_label = if config.use_color {
+        let color = get_device_color(&DeviceId::I2cAddress(op.address));
+        format!("{}", "I2C:".color(color))
+    } else {
+        "I2C:".to_string()
+    };
+
+    let mut result = format!(
+        "{} {} {} {}",
+        timestamp, i2c_label, device_str, op.operation
+    );
 
     // Add NAK indicator if the transaction was NAKed
     if op.was_naked {
