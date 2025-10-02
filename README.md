@@ -47,6 +47,7 @@ Currently supported:
 - **Bitaxe Gamma** with BM1370 ASIC (via bitaxe-raw firmware)
 
 Planned support:
+- **EmberOne** with BM1362 ASIC
 - Additional Bitaxe variants
 - Antminer hash boards
 - Other ASIC mining hardware
@@ -114,25 +115,6 @@ cargo run --bin mujina-dissect -- path/to/capture.csv -x
 
 The tool reuses the same protocol parsing code as the miner itself, ensuring
 consistency between analysis and runtime behavior.
-
-## Architecture
-
-The miner follows a layered architecture:
-
-```
-Mining Pool <--[Stratum]--> Scheduler <--> Board Manager <--> Boards
-                                |                               |
-                                v                               v
-                          Job Generator                   ASIC Chips
-```
-
-Key components:
-- **Transport Layer**: USB device discovery and serial communication
-- **Board Manager**: Creates and manages board instances based on VID/PID
-- **Board Abstraction**: Hardware-specific implementations (e.g., BitaxeBoard)
-- **Chip Protocols**: ASIC communication protocols (e.g., BM13xx)
-- **Management Protocols**: Board peripheral control (e.g., bitaxe-raw)
-- **Scheduler**: Distributes mining jobs and collects results
 
 ## Development Status
 
