@@ -222,82 +222,61 @@ impl MiningStats {
         let _interval = self.last_log_time.elapsed().as_secs_f64();
         self.last_log_time = std::time::Instant::now();
 
-        // Calculate hashrate based on nonce finding rate (Poisson process)
-        // At difficulty D, probability of finding a valid nonce is 1/(D × 2^32)
-        // Finding N nonces in time T means estimated hashes = N × D × 2^32
-        // This accounts for early job termination when nonces are found
-
-        let hashrate_total = if elapsed > 0.0 && self.valid_nonces > 0 {
-            // Use valid nonces as indicator of work done
-            // Each valid nonce represents ~(D × 2^32) hashes on average
-            let hashes_per_nonce = self.difficulty * (u32::MAX as f64 + 1.0);
-            let estimated_hashes = self.valid_nonces as f64 * hashes_per_nonce;
-            estimated_hashes / elapsed
-        } else if elapsed > 0.0 {
-            // No nonces found yet - use job completion rate as fallback
-            // This is less accurate but gives some indication
-            let estimated_hashes = self.jobs_completed as f64 * (u32::MAX as f64 + 1.0) * 0.5; // Assume 50% searched on average
-            estimated_hashes / elapsed
-        } else {
-            0.0
-        };
-
         info!("Mining statistics:");
         info!("  Uptime: {:.0}s", elapsed);
         info!("  Difficulty: {}", self.difficulty);
-        if self.valid_nonces > 0 {
-            info!(
-                "  Hashrate: {:.2} MH/s (estimated from {} valid nonces at difficulty {})",
-                hashrate_total / 1_000_000.0,
-                self.valid_nonces,
-                self.difficulty
-            );
 
-            // Statistical confidence note
-            if self.valid_nonces < 10 {
-                info!("  Note: Hashrate estimate has high variance with <10 nonces");
-            }
-        } else {
-            info!(
-                "  Hashrate: ~{:.2} MH/s (estimated, no valid nonces yet)",
-                hashrate_total / 1_000_000.0
-            );
-        }
-
-        // Theoretical hashrate for BM1370 at target frequency
+        // Theoretical hashrate based on chip specifications
         // BM1370 has 1280 cores, each doing 1 hash per clock cycle
         const TARGET_FREQUENCY_MHZ: f32 = 500.0;
-        let theoretical_hashrate = TARGET_FREQUENCY_MHZ as f64 * 1280.0; // MH/s
+        let theoretical_hashrate_mhs = TARGET_FREQUENCY_MHZ as f64 * 1280.0; // MH/s
         info!(
-            "  Theoretical: {:.2} MH/s at {} MHz",
-            theoretical_hashrate, TARGET_FREQUENCY_MHZ
+            "  Hashrate (theoretical): {:.2} MH/s at {} MHz",
+            theoretical_hashrate_mhs, TARGET_FREQUENCY_MHZ
         );
 
-        if hashrate_total > 0.0 && self.valid_nonces > 0 {
-            let efficiency = (hashrate_total / 1_000_000.0) / theoretical_hashrate * 100.0;
+        // Measured hashrate from nonce finding rate
+        // At difficulty D, finding a valid nonce requires searching ~(D × 2^32) hashes on average
+        // This is a Poisson process, so variance is high with small sample sizes
+        if elapsed > 0.0 && self.valid_nonces > 0 {
+            let hashes_per_nonce = self.difficulty * (u32::MAX as f64 + 1.0);
+            let estimated_total_hashes = self.valid_nonces as f64 * hashes_per_nonce;
+            let measured_hashrate_mhs = (estimated_total_hashes / elapsed) / 1_000_000.0;
+
+            info!(
+                "  Hashrate (measured): {:.2} MH/s from {} valid nonces",
+                measured_hashrate_mhs, self.valid_nonces
+            );
+
+            if self.valid_nonces < 10 {
+                info!("    Note: High variance with <10 nonces, use theoretical hashrate instead");
+            }
+
+            let efficiency = (measured_hashrate_mhs / theoretical_hashrate_mhs) * 100.0;
             info!("  Efficiency: {:.1}%", efficiency);
         }
-        info!("  Total nonces found: {}", self.nonces_found);
+
+        info!("  Nonces found: {}", self.nonces_found);
         info!(
-            "  Valid nonces: {} ({:.2}%)",
+            "  Valid: {} ({:.2}%), Invalid: {}",
             self.valid_nonces,
             if self.nonces_found > 0 {
                 self.valid_nonces as f64 / self.nonces_found as f64 * 100.0
             } else {
                 0.0
-            }
+            },
+            self.invalid_nonces
         );
-        info!("  Invalid nonces: {}", self.invalid_nonces);
         info!("  Jobs completed: {}", self.jobs_completed);
 
-        // Poisson process analysis
-        if elapsed > 0.0 && theoretical_hashrate > 0.0 {
+        // Poisson process analysis: expected nonce rate at this hashrate and difficulty
+        if elapsed > 0.0 && theoretical_hashrate_mhs > 0.0 {
             // At difficulty D, expected rate = hashrate / (D × 2^32)
-            let expected_rate =
-                (theoretical_hashrate * 1_000_000.0) / (self.difficulty * (u32::MAX as f64 + 1.0)); // nonces per second
+            let expected_rate = (theoretical_hashrate_mhs * 1_000_000.0)
+                / (self.difficulty * (u32::MAX as f64 + 1.0)); // nonces per second
             let expected_nonces = expected_rate * elapsed;
             info!(
-                "  Expected ~{:.1} valid nonces in {:.0}s, found {}",
+                "  Expected ~{:.1} valid nonces in {:.0}s at theoretical hashrate, found {}",
                 expected_nonces, elapsed, self.valid_nonces
             );
 
