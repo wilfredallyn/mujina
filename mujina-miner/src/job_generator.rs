@@ -230,7 +230,9 @@ impl JobGenerator {
 
     /// Get a well-known test job with a known valid nonce
     ///
-    /// This uses Bitcoin's genesis block which has a known solution
+    /// Uses Bitcoin's genesis block parameters with known valid nonce.
+    /// This is useful for verifying that header serialization, hashing,
+    /// and difficulty checking logic work correctly.
     pub fn known_good_job() -> (MiningJob, u32) {
         // Use parameters similar to Bitcoin's genesis block
         let header = BlockHeader {
