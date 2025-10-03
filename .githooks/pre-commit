@@ -21,12 +21,30 @@ fi
 
 # Check if any Rust files are being committed
 if git diff --cached --name-only | grep -q '\.rs$'; then
+    # Stash unstaged changes only if there are any
+    STASHED=0
+    if ! git diff --quiet; then
+        STASH_NAME="pre-commit-$(date +%s)"
+        git stash push -q --keep-index -m "$STASH_NAME"
+        STASHED=$?
+    fi
+
+    # Check formatting on staged content
     if cargo fmt -- --check 2>/dev/null; then
         echo "${GREEN}✓${NC} cargo fmt --check passes"
     else
-        echo -e "${RED}✗${NC} cargo fmt --check issues detected. Fix them with:"
+        echo -e "${RED}✗${NC} cargo fmt --check issues detected in staged files. Fix with:"
         echo "  cargo fmt"
+        echo "  git add -u"
         FAILED=1
+    fi
+
+    # Restore working directory if we stashed
+    if [ $STASHED -eq 0 ] && git stash list | grep -q "$STASH_NAME"; then
+        if ! git stash pop -q; then
+            echo -e "${RED}✗${NC} Failed to restore working directory. Manually run:"
+            echo "  git stash pop"
+        fi
     fi
 fi
 
