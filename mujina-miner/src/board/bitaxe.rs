@@ -907,9 +907,9 @@ impl Board for BitaxeBoard {
         self.send_config_command(core_reg_cmd2).await?;
 
         // Set ticket mask for nonce reporting
-        // Bitaxe Gamma: ~500 GH/s, want ~1 nonce/sec
+        // Bitaxe Gamma: use 1024 GH/s to get zero_bits=8 matching esp-miner
         let reporting_interval = ReportingInterval::from_rate(
-            Hashrate::gibihashes_per_sec(500.0),
+            Hashrate::gibihashes_per_sec(1024.0),
             ReportingRate::nonces_per_sec(1.0),
         );
         let ticket_mask = TicketMask::new(reporting_interval);
@@ -1030,12 +1030,7 @@ impl Board for BitaxeBoard {
         // The frequency is ramped up gradually through many steps
         // Following esp-miner's approach: 6.25 MHz steps with 100ms delays
         tracing::info!("Starting frequency ramping from 56.25 MHz to 525 MHz");
-
-        // Generate frequency steps programmatically
-        // Start at 56.25 MHz, increment by 6.25 MHz up to 525 MHz
         let frequency_steps = Self::generate_frequency_ramp_steps(56.25, 525.0, 6.25);
-
-        tracing::debug!("Ramping through {} frequency steps", frequency_steps.len());
 
         for (i, pll_config) in frequency_steps.iter().enumerate() {
             let pll_cmd = Command::WriteRegister {
