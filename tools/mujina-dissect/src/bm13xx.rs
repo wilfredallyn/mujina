@@ -330,7 +330,7 @@ fn parse_bm13xx_command_frame(data: &[u8]) -> Result<Command, ProtocolError> {
             let payload_end = data.len() - 2;
             let crc_bytes = &data[payload_end..];
             let payload = &data[2..payload_end];
-            let expected_crc = u16::from_be_bytes([crc_bytes[0], crc_bytes[1]]);
+            let expected_crc = u16::from_le_bytes([crc_bytes[0], crc_bytes[1]]);
             let calculated_crc = crc16(payload);
             calculated_crc == expected_crc
         } else {
