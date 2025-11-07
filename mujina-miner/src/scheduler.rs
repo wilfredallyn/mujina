@@ -47,7 +47,7 @@ pub async fn task(
             threads
         }
         None => {
-            error!("Thread channel closed before receiving any threads");
+            debug!("Thread channel closed before receiving any threads");
             return;
         }
     };

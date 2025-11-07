@@ -261,7 +261,7 @@ impl super::UsbDiscoveryImpl for LinuxUdevDiscovery {
         event_tx: mpsc::Sender<crate::transport::TransportEvent>,
         shutdown: CancellationToken,
     ) -> Result<()> {
-        info!("Starting USB monitoring in dedicated thread");
+        debug!("Starting USB monitoring in dedicated thread");
 
         // Create a single-threaded Tokio runtime for this thread.
         //
@@ -312,7 +312,7 @@ impl super::UsbDiscoveryImpl for LinuxUdevDiscovery {
                 crate::error::Error::Other(format!("Failed to create async socket: {}", e))
             })?;
 
-            info!("USB monitor created, entering event loop");
+            debug!("USB monitor created, entering event loop");
 
             // Event loop using tokio::select! to wait on both events and shutdown
             // This is clean, safe async code with no manual polling required
@@ -390,7 +390,7 @@ impl super::UsbDiscoveryImpl for LinuxUdevDiscovery {
 
                     // Wait for shutdown signal
                     _ = shutdown.cancelled() => {
-                        info!("Shutdown requested, exiting USB monitor");
+                        debug!("Shutdown requested, exiting USB monitor");
                         return Ok(());
                     }
                 }

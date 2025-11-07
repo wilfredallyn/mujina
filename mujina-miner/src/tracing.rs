@@ -51,8 +51,109 @@ fn use_stdout() {
 
     tracing_subscriber::registry()
         .with(env_filter)
-        .with(tracing_subscriber::fmt::layer().with_timer(LocalTimer))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_timer(LocalTimer)
+                .with_target(true)
+                .fmt_fields(tracing_subscriber::fmt::format::DefaultFields::new())
+                .event_format(CustomFormatter),
+        )
         .init();
+}
+
+/// Custom event formatter that strips crate prefix, colors the target,
+/// and displays fields on a second line for readability.
+struct CustomFormatter;
+
+/// Visitor that collects fields into a string buffer.
+struct FieldCollector {
+    fields: Vec<(String, String)>,
+    message: Option<String>,
+}
+
+impl FieldCollector {
+    fn new() -> Self {
+        Self {
+            fields: Vec::new(),
+            message: None,
+        }
+    }
+}
+
+impl tracing::field::Visit for FieldCollector {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = Some(format!("{:?}", value));
+        } else {
+            self.fields
+                .push((field.name().to_string(), format!("{:?}", value)));
+        }
+    }
+}
+
+impl<S, N> tracing_subscriber::fmt::FormatEvent<S, N> for CustomFormatter
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+    N: for<'a> tracing_subscriber::fmt::FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        _ctx: &tracing_subscriber::fmt::FmtContext<'_, S, N>,
+        mut writer: tracing_subscriber::fmt::format::Writer<'_>,
+        event: &tracing::Event<'_>,
+    ) -> std::fmt::Result {
+        // Write timestamp (no dimming)
+        let timestamp = LocalTimer;
+        timestamp.format_time(&mut writer)?;
+        write!(writer, " ")?;
+
+        // Write level with foreground color
+        let level = *event.metadata().level();
+        let (level_color, level_text) = match level {
+            tracing::Level::ERROR => ("\x1b[31m", "ERROR"), // Red
+            tracing::Level::WARN => ("\x1b[33m", "WARN "),  // Yellow
+            tracing::Level::INFO => ("\x1b[32m", "INFO "),  // Green
+            tracing::Level::DEBUG => ("\x1b[34m", "DEBUG"), // Blue
+            tracing::Level::TRACE => ("\x1b[35m", "TRACE"), // Magenta
+        };
+        write!(writer, "{}{}\x1b[0m ", level_color, level_text)?;
+
+        // Write target (module path), stripping "mujina_miner::" prefix
+        let target = event.metadata().target();
+        let short_target = target.strip_prefix("mujina_miner::").unwrap_or(target);
+        write!(writer, "{}: ", short_target)?;
+
+        // Collect fields using visitor
+        let mut visitor = FieldCollector::new();
+        event.record(&mut visitor);
+
+        // Write message (normal brightness)
+        if let Some(ref msg) = visitor.message {
+            // Strip quotes that Debug formatting adds to strings
+            let clean_msg = msg.trim_matches('"');
+            write!(writer, "{}", clean_msg)?;
+        }
+
+        // If there are structured fields, write them on a second line
+        if !visitor.fields.is_empty() {
+            writeln!(writer)?;
+            // Indent 2 spaces after where module starts
+            // Timestamp (8 chars) + space + level (5 chars) + space = 15
+            // Module starts at 15, so fields at 15 + 2 = 17
+            write!(writer, "\x1b[2m                 ")?; // 17 spaces, dim
+            for (i, (key, value)) in visitor.fields.iter().enumerate() {
+                if i > 0 {
+                    write!(writer, " ")?;
+                }
+                // Strip quotes from string values
+                let clean_value = value.trim_matches('"');
+                write!(writer, "{}={}", key, clean_value)?;
+            }
+            write!(writer, "\x1b[0m")?;
+        }
+
+        writeln!(writer)
+    }
 }
 
 // Provide our own timer that formats timestamps in local time and to the

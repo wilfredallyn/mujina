@@ -66,10 +66,7 @@ impl Daemon {
         self.tracker.close();
 
         info!("Started.");
-        info!(
-            "For hardware debugging, set RUST_LOG=mujina_miner=trace to see \
-             all serial communication"
-        );
+        info!("For hardware debugging, set RUST_LOG=trace to see all communication");
 
         // Install signal handlers
         let mut sigint = unix::signal(SignalKind::interrupt())?;

@@ -83,8 +83,6 @@ impl UsbTransport {
     /// The monitoring thread checks the provided `CancellationToken` and exits
     /// gracefully when cancellation is requested.
     pub async fn start_discovery(&self, shutdown: CancellationToken) -> Result<()> {
-        info!("Starting USB discovery");
-
         // Create platform-specific discovery implementation
         let discovery = create_discovery()?;
 
@@ -98,13 +96,13 @@ impl UsbTransport {
                 if let Err(e) = discovery.monitor_blocking(event_tx, shutdown) {
                     error!("USB monitoring failed: {}", e);
                 }
-                info!("USB monitoring thread exiting");
+                trace!("USB monitoring thread exiting");
             })
             .map_err(|e| {
                 crate::error::Error::Other(format!("Failed to spawn USB monitor thread: {}", e))
             })?;
 
-        info!("USB discovery thread spawned");
+        trace!("USB discovery thread spawned");
         Ok(())
     }
 }

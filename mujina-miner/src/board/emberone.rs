@@ -40,11 +40,6 @@ pub struct EmberOne {
 impl EmberOne {
     /// Create a new EmberOne board instance.
     pub fn new(device_info: UsbDeviceInfo) -> Result<Self, BoardError> {
-        tracing::info!(
-            "EmberOne stub created for device {:04x}:{:04x}",
-            device_info.vid,
-            device_info.pid
-        );
         Ok(Self { device_info })
     }
 }
@@ -118,31 +113,23 @@ impl Board for EmberOne {
 
 // Factory function to create EmberOne board from USB device info
 async fn create_from_usb(device: UsbDeviceInfo) -> crate::error::Result<Box<dyn Board + Send>> {
-    tracing::info!(
-        "Detected EmberOne board (stub): VID={:04x} PID={:04x} Serial={:?}",
-        device.vid,
-        device.pid,
-        device.serial_number
-    );
-
     // EmberOne uses 2 serial ports like Bitaxe (control + data)
     if device.serial_ports.len() != 2 {
         tracing::warn!(
-            "EmberOne expected 2 serial ports, found {}. Creating stub anyway.",
-            device.serial_ports.len()
+            expected = 2,
+            found = device.serial_ports.len(),
+            "EmberOne expected 2 serial ports, creating stub anyway"
         );
     } else {
-        tracing::info!(
-            "EmberOne serial ports: control={}, data={}",
-            device.serial_ports[0],
-            device.serial_ports[1]
+        tracing::debug!(
+            control = %device.serial_ports[0],
+            data = %device.serial_ports[1],
+            "EmberOne serial ports"
         );
     }
 
     let board = EmberOne::new(device)
         .map_err(|e| crate::error::Error::Hardware(format!("Failed to create board: {}", e)))?;
-
-    tracing::info!("EmberOne stub board created successfully");
 
     Ok(Box::new(board))
 }

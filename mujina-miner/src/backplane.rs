@@ -151,7 +151,7 @@ impl Backplane {
                         }
                     }
                     Err(e) => {
-                        debug!(
+                        trace!(
                             vid = %format!("{:04x}", vid),
                             pid = %format!("{:04x}", pid),
                             error = %e,
