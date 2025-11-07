@@ -1,4 +1,5 @@
 pub(crate) mod bitaxe;
+pub(crate) mod emberone;
 
 use async_trait::async_trait;
 use std::{error::Error, fmt, future::Future, pin::Pin};
