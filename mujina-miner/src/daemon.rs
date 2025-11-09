@@ -53,9 +53,7 @@ impl Daemon {
                             error!("Backplane error: {}", e);
                         }
                     }
-                    _ = shutdown.cancelled() => {
-                        debug!("Backplane shutting down");
-                    }
+                    _ = shutdown.cancelled() => {}
                 }
             }
         });
@@ -66,7 +64,7 @@ impl Daemon {
         self.tracker.close();
 
         info!("Started.");
-        info!("For hardware debugging, set RUST_LOG=trace to see all communication");
+        info!("For hardware debugging, set RUST_LOG=mujina_miner=trace to see all communication");
 
         // Install signal handlers
         let mut sigint = unix::signal(SignalKind::interrupt())?;
@@ -83,7 +81,6 @@ impl Daemon {
         }
 
         // Initiate shutdown
-        trace!("Shutting down.");
         self.shutdown.cancel();
 
         // Wait for all tasks to complete

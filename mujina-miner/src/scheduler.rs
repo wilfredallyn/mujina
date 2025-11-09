@@ -38,8 +38,6 @@ pub async fn task(
     running: CancellationToken,
     mut thread_rx: mpsc::Receiver<Vec<Box<dyn HashThread>>>,
 ) {
-    trace!("Scheduler task started.");
-
     // Wait for the first set of hash threads from the backplane
     let threads = match thread_rx.recv().await {
         Some(threads) => {
