@@ -108,6 +108,10 @@ where
         mut writer: tracing_subscriber::fmt::format::Writer<'_>,
         event: &tracing::Event<'_>,
     ) -> std::fmt::Result {
+        // Collect fields first so we can extract log.target if present
+        let mut visitor = FieldCollector::new();
+        event.record(&mut visitor);
+
         // Write timestamp (no dimming)
         let timestamp = LocalTimer;
         timestamp.format_time(&mut writer)?;
@@ -124,14 +128,27 @@ where
         };
         write!(writer, "{}{}\x1b[0m ", level_color, level_text)?;
 
-        // Write target (module path), stripping "mujina_miner::" prefix
+        // Write target (module path) intelligently:
+        // - Strip "mujina_miner::" from our own code to reduce noise
+        // - For log compatibility layer, use log.target field if available
+        // - Keep full paths from dependencies (e.g., "mio::poll")
         let target = event.metadata().target();
-        let short_target = target.strip_prefix("mujina_miner::").unwrap_or(target);
+        let short_target = if let Some(stripped) = target.strip_prefix("mujina_miner::") {
+            // Our code: strip the prefix
+            stripped.to_string()
+        } else if target == "log" {
+            // Log compatibility layer: extract real target from log.target field
+            visitor
+                .fields
+                .iter()
+                .find(|(k, _)| k == "log.target")
+                .map(|(_, v)| v.trim_matches('"').to_string())
+                .unwrap_or_else(|| target.to_string())
+        } else {
+            // Dependency code with full module path: use as-is
+            target.to_string()
+        };
         write!(writer, "{}: ", short_target)?;
-
-        // Collect fields using visitor
-        let mut visitor = FieldCollector::new();
-        event.record(&mut visitor);
 
         // Write message (normal brightness)
         if let Some(ref msg) = visitor.message {
@@ -141,12 +158,19 @@ where
         }
 
         // If there are structured fields, write them on a second line
-        if !visitor.fields.is_empty() {
+        // Filter out log.* fields since they're compatibility layer metadata
+        let display_fields: Vec<_> = visitor
+            .fields
+            .iter()
+            .filter(|(k, _)| !k.starts_with("log."))
+            .collect();
+
+        if !display_fields.is_empty() {
             writeln!(writer)?;
             // Indent to align with module column
             // Timestamp (8 chars) + space + level (5 chars) + space = 15
             write!(writer, "\x1b[90m               ")?; // 15 spaces, bright black (dark gray)
-            for (i, (key, value)) in visitor.fields.iter().enumerate() {
+            for (i, (key, value)) in display_fields.iter().enumerate() {
                 if i > 0 {
                     write!(writer, ", ")?;
                 }
