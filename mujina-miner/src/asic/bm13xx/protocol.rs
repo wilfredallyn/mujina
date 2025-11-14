@@ -18,7 +18,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use super::crc::{crc16, crc5, crc5_is_valid};
 use super::error::ProtocolError;
-use crate::asic::{ChipError, MiningJob};
+use crate::asic::MiningJob;
 use crate::tracing::prelude::*;
 
 /// Mining frequency with validation and PLL calculation
@@ -2874,42 +2874,6 @@ impl BM13xxProtocol {
         commands
     }
 
-    /// Decode a response into a mining result.
-    pub fn decode_response(
-        &self,
-        response: Response,
-        _chip_address: u8,
-    ) -> Result<MiningResult, ChipError> {
-        match response {
-            Response::ReadRegister {
-                chip_address: _,
-                register,
-            } => Ok(MiningResult::RegisterRead(register)),
-            Response::Nonce {
-                nonce,
-                job_id,
-                midstate_num: _,
-                version: _,
-                subcore_id,
-            } => {
-                // Extract main core ID from nonce (bits 25-31)
-                let main_core_id = ((nonce >> 25) & 0x7f) as u8;
-
-                // Full core ID combines main core and subcore
-                let core_id = (main_core_id << 4) | subcore_id;
-
-                // Job ID is already extracted correctly (4 bits)
-                let actual_job_id = job_id as u64;
-
-                Ok(MiningResult::NonceFound {
-                    job_id: actual_job_id,
-                    nonce,
-                    core_id,
-                })
-            }
-        }
-    }
-
     /// Create a command to read a register.
     pub fn read_register(&self, chip_address: u8, register: RegisterAddress) -> Command {
         Command::ReadRegister {
@@ -2991,16 +2955,4 @@ impl BM13xxProtocol {
             register_address: RegisterAddress::ChipId,
         }
     }
-}
-
-/// Results from protocol operations
-pub enum MiningResult {
-    /// A register was read
-    RegisterRead(Register),
-    /// A nonce was found
-    NonceFound {
-        job_id: u64,
-        nonce: u32,
-        core_id: u8,
-    },
 }
