@@ -17,7 +17,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use crate::{
     asic::{
         bm13xx::{self, protocol::Command, BM13xxProtocol},
-        ChipInfo, MiningJob,
+        ChipInfo,
     },
     hash_thread::{bm13xx::BM13xxThread, HashThread},
     hw_trait::{
@@ -41,7 +41,7 @@ use crate::{
 
 use super::{
     pattern::{Match, StringMatch},
-    Board, BoardError, BoardEvent, BoardInfo, JobCompleteReason,
+    Board, BoardError, BoardEvent, BoardInfo,
 };
 
 /// Thread removal signal sent via watch channel from board to thread.
@@ -147,18 +147,12 @@ pub struct BitaxeBoard {
     /// Control handle for data channel (for baud rate changes)
     #[expect(dead_code, reason = "will be used when baud rate change is fixed")]
     data_control: SerialControl,
-    /// Protocol handler for chip communication
-    protocol: BM13xxProtocol,
     /// Discovered chip information (passive record-keeping)
     chip_infos: Vec<ChipInfo>,
     /// Channel for sending board events
     event_tx: Option<mpsc::Sender<BoardEvent>>,
     /// Channel for receiving board events (populated during initialization)
     event_rx: Option<mpsc::Receiver<BoardEvent>>,
-    /// Current job ID
-    current_job_id: Option<u64>,
-    /// Job ID counter for chip-internal job tracking (4-bit field: 0-15)
-    next_job_id: u8,
     /// Thread shutdown signal (board-to-thread implementation detail)
     thread_shutdown: Option<watch::Sender<ThreadRemovalSignal>>,
     /// Handle for the statistics task
@@ -215,12 +209,9 @@ impl BitaxeBoard {
                 bm13xx::FrameCodec::default(),
             )),
             data_control,
-            protocol: BM13xxProtocol::new(),
             chip_infos: Vec::new(),
             event_tx: None,
             event_rx: None,
-            current_job_id: None,
-            next_job_id: 0,
             thread_shutdown: None,
             stats_task_handle: None,
         })
@@ -372,27 +363,6 @@ impl BitaxeBoard {
             ))
         } else {
             Ok(())
-        }
-    }
-
-    /// Spawn a job completion timer task
-    fn spawn_job_timer(&self, job_id: Option<u64>) {
-        if let (Some(job_id), Some(tx)) = (job_id, &self.event_tx) {
-            let event_tx = tx.clone();
-
-            tokio::spawn(async move {
-                // BM1370 at ~500 GH/s takes about 8.6 seconds to search 2^32 nonces
-                // Add some buffer time
-                tokio::time::sleep(Duration::from_secs(10)).await;
-
-                // Send job complete event
-                let _ = event_tx
-                    .send(BoardEvent::JobComplete {
-                        job_id,
-                        reason: JobCompleteReason::TimeoutEstimate,
-                    })
-                    .await;
-            });
         }
     }
 
@@ -821,55 +791,6 @@ impl Board for BitaxeBoard {
 
     fn chip_infos(&self) -> &[ChipInfo] {
         &self.chip_infos
-    }
-
-    async fn send_job(&mut self, job: &MiningJob) -> Result<(), BoardError> {
-        // Convert the job into a BM13xx command
-        let command = self.protocol.encode_mining_job(job, self.next_job_id);
-
-        // Send the job command
-        self.data_writer
-            .as_mut()
-            .ok_or(BoardError::InitializationFailed(
-                "data_writer not available (transferred to hash thread?)".into(),
-            ))?
-            .send(command)
-            .await
-            .map_err(BoardError::Communication)?;
-
-        debug!(
-            job_id = job.job_id,
-            chip_count = self.chip_infos.len(),
-            chip_job_id = self.next_job_id,
-            "Sent job to chips"
-        );
-
-        // Update job tracking
-        self.current_job_id = Some(job.job_id);
-
-        // Increment job ID counter (4-bit field: 0-15)
-        self.next_job_id = (self.next_job_id + 1) % 16;
-
-        // Spawn job completion timer
-        self.spawn_job_timer(self.current_job_id);
-
-        Ok(())
-    }
-
-    async fn cancel_job(&mut self, job_id: u64) -> Result<(), BoardError> {
-        // TODO: Implement job cancellation
-        // This might involve sending a new dummy job or reset command
-
-        if let Some(tx) = &self.event_tx {
-            let _ = tx
-                .send(BoardEvent::JobComplete {
-                    job_id,
-                    reason: JobCompleteReason::Cancelled,
-                })
-                .await;
-        }
-
-        Ok(())
     }
 
     fn board_info(&self) -> BoardInfo {

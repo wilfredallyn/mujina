@@ -7,7 +7,7 @@ use std::{error::Error, fmt, future::Future, pin::Pin};
 use tokio::sync::mpsc;
 
 use crate::{
-    asic::{ChipError, ChipInfo, MiningJob, NonceResult},
+    asic::{ChipError, ChipInfo, NonceResult},
     hash_thread::HashThread,
     transport::UsbDeviceInfo,
 };
@@ -93,20 +93,6 @@ pub trait Board: Send {
 
     /// Information about discovered chips.
     fn chip_infos(&self) -> &[ChipInfo];
-
-    /// Send a mining job to all chips on this board.
-    ///
-    /// Each chip will work on the same job but search different nonce ranges
-    /// automatically based on their internal core architecture.
-    ///
-    /// The job completion will be reported via the event stream as
-    /// `BoardEvent::JobComplete`.
-    async fn send_job(&mut self, job: &MiningJob) -> Result<(), BoardError>;
-
-    /// Cancel the current mining job.
-    ///
-    /// This will trigger a `BoardEvent::JobComplete` with reason `Cancelled`.
-    async fn cancel_job(&mut self, job_id: u64) -> Result<(), BoardError>;
 
     /// Board identification and metadata.
     fn board_info(&self) -> BoardInfo;

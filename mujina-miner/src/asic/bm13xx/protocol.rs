@@ -18,7 +18,6 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use super::crc::{crc16, crc5, crc5_is_valid};
 use super::error::ProtocolError;
-use crate::asic::MiningJob;
 use crate::tracing::prelude::*;
 
 /// Mining frequency with validation and PLL calculation
@@ -1579,40 +1578,6 @@ mod init_tests {
     }
 
     #[test]
-    fn job_distribution() {
-        use crate::asic::MiningJob;
-
-        let protocol = BM13xxProtocol::new();
-
-        // Create a test header
-        let mut header = [0u8; 80];
-        // Version (0x20000000 in little-endian)
-        header[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x20]);
-        // Previous block hash
-        header[4..36].copy_from_slice(&[0x00; 32]);
-        // Merkle root
-        header[36..68].copy_from_slice(&[0x11; 32]);
-        // ntime (0x6767675c in little-endian)
-        header[68..72].copy_from_slice(&[0x5c, 0x67, 0x67, 0x67]);
-        // nbits (0x170e3ab4 in little-endian)
-        header[72..76].copy_from_slice(&[0xb4, 0x3a, 0x0e, 0x17]);
-        // nonce (placeholder)
-        header[76..80].copy_from_slice(&[0x00; 4]);
-
-        let job = MiningJob::from_header(
-            123, header, [0xff; 32], // target
-            0,          // nonce_start
-            0xffffffff, // nonce_range
-        );
-
-        let commands = protocol.distribute_job(&job, 65, 0x18);
-
-        // Should have one broadcast job command
-        assert_eq!(commands.len(), 1);
-        assert!(matches!(&commands[0], Command::JobFull { .. }));
-    }
-
-    #[test]
     fn multi_chip_init_includes_nonce_range() {
         let protocol = BM13xxProtocol::new();
         let commands = protocol.multi_chip_init(65);
@@ -2631,36 +2596,6 @@ impl BM13xxProtocol {
         }
     }
 
-    /// Encode a mining job into a chip command (legacy interface).
-    ///
-    /// For BM1370, this uses the full format where the chip calculates midstates.
-    /// Job IDs should be managed by the caller and cycled appropriately.
-    ///
-    /// NOTE: This is legacy code used by old board interface. New code should
-    /// construct JobFullFormat directly from Bitcoin types.
-    #[deprecated(note = "Use JobFullFormat directly with Bitcoin types")]
-    pub fn encode_mining_job(&self, job: &MiningJob, job_id: u8) -> Command {
-        // Convert MiningJob (legacy format with byte arrays) to JobFullFormat
-        let job_data = JobFullFormat {
-            job_id,
-            num_midstates: 0x01, // BM1370 typically uses 1
-            starting_nonce: 0,   // Always start at 0
-            nbits: bitcoin::CompactTarget::from_consensus(job.nbits),
-            ntime: job.ntime,
-            // MiningJob stores hashes in wire format (big-endian word order)
-            // Convert to Bitcoin internal format
-            merkle_root: bitcoin::hash_types::TxMerkleNode::from_byte_array(hash_from_wire_bytes(
-                &job.merkle_root,
-            )),
-            prev_block_hash: bitcoin::BlockHash::from_byte_array(hash_from_wire_bytes(
-                &job.prev_block_hash,
-            )),
-            version: bitcoin::block::Version::from_consensus(job.version as i32),
-        };
-
-        Command::JobFull { job_data }
-    }
-
     /// Get the initialization sequence for a single chip (e.g., Bitaxe).
     ///
     /// Returns a vector of commands to configure the chip for mining:
@@ -2815,27 +2750,6 @@ impl BM13xxProtocol {
 
         // Write nonce range to all chips
         commands.push(self.broadcast_write(Register::NonceRange(nonce_config)));
-
-        commands
-    }
-
-    /// Distribute a mining job across chips with proper nonce space partitioning.
-    ///
-    /// For multi-chip chains, each chip gets the same job but searches different
-    /// portions of the nonce space based on their chip address and NONCE_RANGE setting.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub fn distribute_job(
-        &self,
-        job: &MiningJob,
-        _chain_length: usize,
-        job_id: u8,
-    ) -> Vec<Command> {
-        let mut commands = Vec::new();
-
-        // For BM1370/BM1362, jobs are broadcast to all chips
-        // The NONCE_RANGE register handles partitioning
-        let job_cmd = self.encode_mining_job(job, job_id);
-        commands.push(job_cmd);
 
         commands
     }

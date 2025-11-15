@@ -26,11 +26,7 @@ use super::{
     pattern::{Match, StringMatch},
     Board, BoardError, BoardEvent, BoardInfo,
 };
-use crate::{
-    asic::{ChipInfo, MiningJob},
-    hash_thread::HashThread,
-    transport::UsbDeviceInfo,
-};
+use crate::{asic::ChipInfo, hash_thread::HashThread, transport::UsbDeviceInfo};
 
 /// EmberOne mining board (stub implementation).
 pub struct EmberOne {
@@ -72,18 +68,6 @@ impl Board for EmberOne {
     fn chip_infos(&self) -> &[ChipInfo] {
         // No chips discovered yet in stub
         &[]
-    }
-
-    async fn send_job(&mut self, _job: &MiningJob) -> Result<(), BoardError> {
-        Err(BoardError::InitializationFailed(
-            "EmberOne send_job not yet implemented".into(),
-        ))
-    }
-
-    async fn cancel_job(&mut self, _job_id: u64) -> Result<(), BoardError> {
-        Err(BoardError::InitializationFailed(
-            "EmberOne cancel_job not yet implemented".into(),
-        ))
     }
 
     fn board_info(&self) -> BoardInfo {
