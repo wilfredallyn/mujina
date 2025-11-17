@@ -2380,6 +2380,84 @@ mod response_tests {
             "Version rolling field << 13 should match mining.submit version"
         );
     }
+
+    #[test]
+    fn test_full_mining_round_trip() {
+        use crate::asic::bm13xx::test_data::esp_miner_job;
+        use crate::types::DisplayDifficulty;
+        use bitcoin::block::Header as BlockHeader;
+
+        // Build JobFullFormat, encode to wire, decode nonce response,
+        // apply version rolling, compute hash, and verify difficulty.
+        let job = JobFullFormat {
+            job_id: *esp_miner_job::wire_tx::JOB_ID,
+            num_midstates: esp_miner_job::wire_tx::NUM_MIDSTATES_BYTE[0],
+            starting_nonce: u32::from_le_bytes(
+                (*esp_miner_job::wire_tx::STARTING_NONCE_BYTES)
+                    .try_into()
+                    .unwrap(),
+            ),
+            nbits: *esp_miner_job::notify::NBITS,
+            ntime: *esp_miner_job::notify::NTIME,
+            merkle_root: *esp_miner_job::notify::MERKLE_ROOT,
+            prev_block_hash: *esp_miner_job::notify::PREV_BLOCKHASH,
+            version: *esp_miner_job::notify::VERSION,
+        };
+
+        let mut codec = FrameCodec::default();
+        let mut tx_frame = BytesMut::new();
+        codec
+            .encode(
+                Command::JobFull {
+                    job_data: job.clone(),
+                },
+                &mut tx_frame,
+            )
+            .expect("Should encode JobFull command");
+
+        assert_eq!(
+            tx_frame.as_ref(),
+            &esp_miner_job::wire_tx::FRAME,
+            "TX frame should match hardware capture"
+        );
+
+        let rx_response =
+            decode_frame(&esp_miner_job::wire_rx::FRAME).expect("Should decode RX frame");
+
+        let Response::Nonce {
+            nonce,
+            job_id: rx_job_id,
+            version: version_rolling,
+            ..
+        } = rx_response
+        else {
+            panic!("Expected Nonce response");
+        };
+
+        assert_eq!(rx_job_id, job.job_id, "Job ID should round-trip");
+
+        let full_version = version_rolling.apply_to_version(job.version);
+        let header = BlockHeader {
+            version: full_version,
+            prev_blockhash: job.prev_block_hash,
+            merkle_root: job.merkle_root,
+            time: job.ntime,
+            bits: job.nbits,
+            nonce,
+        };
+
+        let hash = header.block_hash();
+        let difficulty = DisplayDifficulty::from_hash(&hash).as_f64();
+
+        assert!(
+            (difficulty - esp_miner_job::EXPECTED_HASH_DIFFICULTY).abs() < 0.1,
+            "Hash difficulty should match esp-miner result"
+        );
+        assert!(
+            difficulty >= esp_miner_job::POOL_SHARE_DIFFICULTY,
+            "Hash should meet pool difficulty"
+        );
+    }
 }
 
 #[cfg(test)]
