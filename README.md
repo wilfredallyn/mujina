@@ -13,17 +13,38 @@ Open source Bitcoin mining software written in Rust for ASIC mining hardware.
 
 mujina-miner is a modern, async Rust implementation of Bitcoin mining software
 designed to communicate with various Bitcoin mining hash boards via USB serial
-interfaces. It's part of the larger Mujina OS project, an open source,
-Debian-based embedded Linux distribution optimized for Bitcoin mining hardware.
+interfaces. Part of the larger Mujina OS project, an open source, Debian-based
+embedded Linux distribution optimized for Bitcoin mining hardware.
 
 ## Features
 
-- **Modular Architecture**: Clean separation between transport, board control,
-  chip communication, and mining logic
-- **Async I/O**: Built on Tokio for efficient concurrent operations
-- **Multi-Board Support**: Extensible design for different ASIC boards and chips
-- **Hardware Abstraction**: Generic traits for GPIO, I2C, and ADC operations
-- **Protocol Documentation**: Detailed documentation of mining protocols
+- **Heterogeneous Multi-Board Support**: Mix and match different hash board
+  types in a single deployment; hot-swappable, no need to restart when adding
+  or removing boards
+- **Hackable & Extensible**: Clear, modular architecture with well-documented
+  internals - designed for modification, experimentation, and custom extensions
+- **Reference-Grade Documentation**: Thorough documentation at every layer,
+  from chip protocols to system architecture, serving as both implementation
+  guide and educational resource
+- **API-Driven Control**: REST API for all operations---implement your own
+  control strategies, automate operations, or build custom interfaces on top
+- **Open-Source, Open-Contribution**: Active development with open
+  contribution; not code dumps or abandonware, a living project built by
+  the entire community
+- **Accessible Development**: Start developing with minimal hardware; a laptop
+  and a single [Bitaxe](mujina-miner/src/board/bitaxe_gamma.md) board is enough
+  to contribute meaningfully
+
+## Supported Hardware
+
+Currently supported:
+- [**Bitaxe Gamma**](mujina-miner/src/board/bitaxe_gamma.md) with BM1370 ASIC
+
+Planned support:
+- **EmberOne** with BM1362 ASIC
+- **EmberOne** with Intel BZM2 ASICs
+- Antminer S19j Pro hash boards
+- Any and all ASIC mining hardware
 
 ## Documentation
 
@@ -31,7 +52,7 @@ Debian-based embedded Linux distribution optimized for Bitcoin mining hardware.
 
 - [Architecture Overview](docs/architecture.md) - System design and component
   interaction
-- [Contributing Guide](CONTRIBUTING.md) - How to contribute to the project
+- [Contribution Guide](CONTRIBUTING.md) - How to contribute to the project
 - [Code Style Guide](CODE_STYLE.md) - Formatting and style rules
 - [Coding Guidelines](CODING_GUIDELINES.md) - Best practices and design
   patterns
@@ -48,20 +69,9 @@ Debian-based embedded Linux distribution optimized for Bitcoin mining hardware.
 - [Bitaxe Gamma Board Guide](mujina-miner/src/board/bitaxe_gamma.md) - Hardware
   and software interface documentation for Bitaxe Gamma
 
-## Supported Hardware
-
-Currently supported:
-- **Bitaxe Gamma** with BM1370 ASIC (via bitaxe-raw firmware)
-
-Planned support:
-- **EmberOne** with BM1362 ASIC
-- Additional Bitaxe variants
-- Antminer hash boards
-- Other ASIC mining hardware
-
 ## Build Requirements
 
-### Development Dependencies (Linux)
+### Linux
 
 On Debian/Ubuntu systems:
 
@@ -69,13 +79,12 @@ On Debian/Ubuntu systems:
 sudo apt-get install libudev-dev
 ```
 
-The `libudev-dev` package provides header files and development libraries
-required for USB device discovery during compilation.
+The `libudev-dev` package provides header files for building, and depends on
+the `libudev` package which provides the library for runtime.
 
 ### macOS
 
-macOS support is planned but not yet implemented. USB discovery will use the
-IOKit framework when available.
+macOS support is planned, but USB discovery using IOKit is not yet implemented.
 
 ## Building
 
@@ -83,42 +92,36 @@ IOKit framework when available.
 # Build the workspace
 cargo build
 
-# Run tests
+# Run unit tests (no hardware required)
 cargo test
-
-# Run the miner daemon (requires connected hardware)
-cargo run --bin mujina-minerd
 ```
 
 ## Running
 
-Ensure your Bitaxe device is connected via USB and appears as `/dev/ttyACM0`
-and `/dev/ttyACM1`.
-
 ```bash
 # Run with default logging
-cargo run --bin mujina-minerd
+cargo run
 
 # Run with debug logging
-RUST_LOG=mujina_miner=debug cargo run --bin mujina-minerd
+RUST_LOG=mujina_miner=debug cargo run
 
-# Run with trace logging (shows all serial communication)
-RUST_LOG=mujina_miner=trace cargo run --bin mujina-minerd
+# Run with trace logging (shows all hardware and network communication)
+RUST_LOG=mujina_miner=trace cargo run
 ```
 
 ## Protocol Analysis Tool
 
 The `mujina-dissect` tool analyzes captured communication between the host and
 mining hardware, providing detailed protocol-level insights for BM13xx serial
-commands and PMBus/I2C power management operations.
+commands, PMBus/I2C power management, and fan control.
 
 See [tools/mujina-dissect/README.md](tools/mujina-dissect/README.md) for
 detailed usage and documentation.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 or later -
-see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v3.0 or later.
+See the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
@@ -126,11 +129,16 @@ We welcome contributions! Whether you're fixing bugs, adding features, improving
 documentation, or simply exploring the codebase to learn about Bitcoin mining
 protocols and hardware, your involvement is valued.
 
-Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get
+Please see our [Contribution Guide](CONTRIBUTING.md) for details on how to get
 started.
 
 ## Related Projects
 
-- [Mujina OS](https://github.com/mujina-os/mujina-os) - The parent project
+- [Bitaxe](https://github.com/bitaxeorg) - Open-source Bitcoin mining
+  hardware designs
 - [bitaxe-raw](https://github.com/bitaxeorg/bitaxe-raw) - Firmware for Bitaxe
   boards
+- [EmberOne](https://github.com/256foundation/emberone00-pcb) - Open-source
+  Bitcoin mining hashboard
+- [emberone-usbserial-fw](https://github.com/256foundation/emberone-usbserial-fw) -
+  Firmware for EmberOne boards
