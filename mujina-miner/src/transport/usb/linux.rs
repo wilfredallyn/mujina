@@ -365,26 +365,4 @@ mod tests {
         let discovery = LinuxUdevDiscovery::new();
         assert!(discovery.is_ok());
     }
-
-    #[test]
-    #[ignore] // Run with: cargo test --package mujina-miner -- --ignored --nocapture
-    fn test_udev_monitor_minimal() {
-        // Minimal test to understand why socket.iter() returns None immediately
-        println!("Creating udev monitor...");
-        let socket = udev::MonitorBuilder::new_kernel()
-            .unwrap()
-            .match_subsystem("usb")
-            .unwrap()
-            .listen()
-            .unwrap();
-
-        println!("Monitor created, calling iter()...");
-        let mut iter = socket.iter();
-
-        println!("Calling iter.next() - this should block...");
-        match iter.next() {
-            Some(event) => println!("Got event: {:?}", event.event_type()),
-            None => println!("iter.next() returned None immediately!"),
-        }
-    }
 }
