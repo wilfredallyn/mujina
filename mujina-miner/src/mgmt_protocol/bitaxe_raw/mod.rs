@@ -1,8 +1,52 @@
 //! Bitaxe-raw control protocol implementation.
 //!
 //! This module implements the packet-based control protocol used by the
-//! bitaxe-raw firmware for managing board peripherals over the control
-//! serial channel.
+//! [bitaxe-raw](https://github.com/bitaxeorg/bitaxe-raw) firmware for
+//! managing board peripherals over the control serial channel.
+//!
+//! # Protocol Overview
+//!
+//! The protocol tunnels I2C, GPIO, and ADC operations over USB serial using
+//! a request-response packet structure. Each request includes an ID that is
+//! echoed in the response for correlation.
+//!
+//! ## Packet Format
+//!
+//! ```text
+//! Request:  [Length:2 LE] [ID:1] [Bus:1] [Page:1] [Command:1] [Data:N]
+//! Response: [Length:2 LE] [ID:1] [Data:N]
+//! ```
+//!
+//! **Length field encoding differs between requests and responses:**
+//! - **Requests**: Length = total packet size (all fields including length itself)
+//! - **Responses**: Length = data bytes only (not including length field or ID)
+//!   - Response packet size = 2 (length field) + 1 (ID) + length
+//!
+//! ## Pages
+//!
+//! - `0x05` - I2C operations (peripheral communication)
+//! - `0x06` - GPIO operations (ASIC reset, status pins)
+//! - `0x07` - ADC operations (voltage monitoring)
+//!
+//! The bus field is always `0x00` in current firmware.
+//!
+//! ## GPIO Operations
+//!
+//! For GPIO, the command byte is the pin number itself:
+//! - Write: `[pin] [0x00 or 0x01]` (low/high)
+//! - Read: `[pin]` -> Response: `[0x00 or 0x01]`
+//!
+//! ## I2C Operations
+//!
+//! Standard I2C operations with 7-bit addressing:
+//! - Write: `[addr] [data...]`
+//! - Read: `[addr] [read_len]` -> Response: `[data...]`
+//! - Write-Read: `[addr] [write_data...] [read_len]` -> Response: `[data...]`
+//!
+//! ## Error Responses
+//!
+//! Errors are indicated by a response data field starting with `0xFF` followed
+//! by an error code. See [`ErrorCode`] for defined error types.
 
 pub mod channel;
 pub mod gpio;
