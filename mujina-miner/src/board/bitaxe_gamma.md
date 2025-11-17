@@ -70,7 +70,6 @@ Standard I2C operations with 7-bit addressing:
   - Temperature monitoring
   - Fault protection (OV, OC, OT)
 - Configured for Bitaxe Gamma's single BM1370 ASIC requirements
-- See `Tps546Config::bitaxe_gamma()` in the code for specific values
 
 ### Thermal Management - EMC2101
 - I2C address: `0x4C`

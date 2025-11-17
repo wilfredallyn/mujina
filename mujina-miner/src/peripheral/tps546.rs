@@ -29,6 +29,13 @@ use constants::{DEFAULT_ADDRESS as TPS546_I2C_ADDR, DEVICE_ID1, DEVICE_ID2, DEVI
 /// TPS546 configuration parameters
 #[derive(Debug, Clone)]
 pub struct Tps546Config {
+    // Phase and frequency
+    /// Phase configuration (0x00 for single phase, 0xFF for all phases)
+    pub phase: u8,
+    /// Switching frequency (kHz)
+    pub frequency_switch_khz: i32,
+
+    // Input voltage thresholds
     /// Input voltage turn-on threshold (V)
     pub vin_on: f32,
     /// Input voltage turn-off threshold (V)
@@ -37,6 +44,10 @@ pub struct Tps546Config {
     pub vin_uv_warn_limit: f32,
     /// Input overvoltage fault limit (V)
     pub vin_ov_fault_limit: f32,
+    /// Input overvoltage fault response byte
+    pub vin_ov_fault_response: u8,
+
+    // Output voltage configuration
     /// Output voltage scale factor
     pub vout_scale_loop: f32,
     /// Minimum output voltage (V)
@@ -45,28 +56,54 @@ pub struct Tps546Config {
     pub vout_max: f32,
     /// Initial output voltage command (V)
     pub vout_command: f32,
+
+    // Output voltage protection (relative to vout_command)
+    /// Output overvoltage fault limit (relative, e.g., 1.25 = 125%)
+    pub vout_ov_fault_limit: f32,
+    /// Output overvoltage warning limit (relative, e.g., 1.16 = 116%)
+    pub vout_ov_warn_limit: f32,
+    /// Margin high voltage (relative, e.g., 1.10 = 110%)
+    pub vout_margin_high: f32,
+    /// Margin low voltage (relative, e.g., 0.90 = 90%)
+    pub vout_margin_low: f32,
+    /// Output undervoltage warning limit (relative, e.g., 0.90 = 90%)
+    pub vout_uv_warn_limit: f32,
+    /// Output undervoltage fault limit (relative, e.g., 0.75 = 75%)
+    pub vout_uv_fault_limit: f32,
+
+    // Output current protection
     /// Output current overcurrent warning limit (A)
     pub iout_oc_warn_limit: f32,
     /// Output current overcurrent fault limit (A)
     pub iout_oc_fault_limit: f32,
-}
+    /// Output overcurrent fault response byte
+    pub iout_oc_fault_response: u8,
 
-impl Tps546Config {
-    /// Configuration for Bitaxe Gamma (single ASIC)
-    pub fn bitaxe_gamma() -> Self {
-        Self {
-            vin_on: 4.8,
-            vin_off: 4.5,
-            vin_uv_warn_limit: 0.0, // Disabled due to TI bug
-            vin_ov_fault_limit: 6.5,
-            vout_scale_loop: 0.25,
-            vout_min: 1.0,
-            vout_max: 2.0,
-            vout_command: 1.15, // BM1370 default voltage
-            iout_oc_warn_limit: 25.0,
-            iout_oc_fault_limit: 30.0,
-        }
-    }
+    // Temperature protection
+    /// Overtemperature warning limit (degC)
+    pub ot_warn_limit: i32,
+    /// Overtemperature fault limit (degC)
+    pub ot_fault_limit: i32,
+    /// Overtemperature fault response byte
+    pub ot_fault_response: u8,
+
+    // Timing configuration
+    /// Turn-on delay (ms)
+    pub ton_delay: i32,
+    /// Turn-on rise time (ms)
+    pub ton_rise: i32,
+    /// Maximum turn-on fault limit (ms)
+    pub ton_max_fault_limit: i32,
+    /// Turn-on maximum fault response byte
+    pub ton_max_fault_response: u8,
+    /// Turn-off delay (ms)
+    pub toff_delay: i32,
+    /// Turn-off fall time (ms)
+    pub toff_fall: i32,
+
+    // Pin configuration
+    /// Pin detect override value
+    pub pin_detect_override: u16,
 }
 
 /// TPS546 error types
@@ -167,18 +204,22 @@ impl<I2C: I2c> Tps546<I2C> {
         Ok(())
     }
 
-    /// Write all configuration parameters
+    /// Write all configuration parameters from the config struct
     async fn write_config(&mut self) -> Result<()> {
         trace!("---Writing new config values to TPS546---");
 
         // Phase configuration
-        trace!("Setting PHASE: 00");
-        self.write_byte(PmbusCommand::Phase, 0x00).await?;
-
-        // Switching frequency (650 kHz)
-        trace!("Setting FREQUENCY: 650kHz");
-        self.write_word(PmbusCommand::FrequencySwitch, self.int_to_slinear11(650))
+        trace!("Setting PHASE: {:02X}", self.config.phase);
+        self.write_byte(PmbusCommand::Phase, self.config.phase)
             .await?;
+
+        // Switching frequency
+        trace!("Setting FREQUENCY: {}kHz", self.config.frequency_switch_khz);
+        self.write_word(
+            PmbusCommand::FrequencySwitch,
+            self.int_to_slinear11(self.config.frequency_switch_khz),
+        )
+        .await?;
 
         // Input voltage thresholds (handle UV_WARN_LIMIT bug like esp-miner)
         if self.config.vin_uv_warn_limit > 0.0 {
@@ -217,14 +258,15 @@ impl<I2C: I2c> Tps546<I2C> {
         )
         .await?;
 
-        // VIN_OV_FAULT_RESPONSE (0xB7 = immediate shutdown, 6 retries, 7xTON_RISE delay)
-        const VIN_OV_FAULT_RESPONSE: u8 = 0xB7;
         trace!(
-            "Setting VIN_OV_FAULT_RESPONSE: 0x{:02X} (immediate shutdown, 6 retries)",
-            VIN_OV_FAULT_RESPONSE
+            "Setting VIN_OV_FAULT_RESPONSE: 0x{:02X}",
+            self.config.vin_ov_fault_response
         );
-        self.write_byte(PmbusCommand::VinOvFaultResponse, VIN_OV_FAULT_RESPONSE)
-            .await?;
+        self.write_byte(
+            PmbusCommand::VinOvFaultResponse,
+            self.config.vin_ov_fault_response,
+        )
+        .await?;
 
         // Output voltage configuration
         trace!("Setting VOUT SCALE: {:.2}", self.config.vout_scale_loop);
@@ -247,41 +289,52 @@ impl<I2C: I2c> Tps546<I2C> {
         let vout_min = self.encode_voltage(self.config.vout_min).await?;
         self.write_word(PmbusCommand::VoutMin, vout_min).await?;
 
-        // Output voltage protection
-        const VOUT_OV_FAULT_LIMIT: f32 = 1.25; // 125% of VOUT_COMMAND
-        const VOUT_OV_WARN_LIMIT: f32 = 1.16; // 116% of VOUT_COMMAND
-        const VOUT_MARGIN_HIGH: f32 = 1.10; // 110% of VOUT_COMMAND
-        const VOUT_MARGIN_LOW: f32 = 0.90; // 90% of VOUT_COMMAND
-        const VOUT_UV_WARN_LIMIT: f32 = 0.90; // 90% of VOUT_COMMAND
-        const VOUT_UV_FAULT_LIMIT: f32 = 0.75; // 75% of VOUT_COMMAND
-
-        trace!("Setting VOUT_OV_FAULT_LIMIT: {:.2}", VOUT_OV_FAULT_LIMIT);
-        let vout_ov_fault = self.encode_voltage(VOUT_OV_FAULT_LIMIT).await?;
+        // Output voltage protection (relative to vout_command)
+        trace!(
+            "Setting VOUT_OV_FAULT_LIMIT: {:.2}",
+            self.config.vout_ov_fault_limit
+        );
+        let vout_ov_fault = self.encode_voltage(self.config.vout_ov_fault_limit).await?;
         self.write_word(PmbusCommand::VoutOvFaultLimit, vout_ov_fault)
             .await?;
 
-        trace!("Setting VOUT_OV_WARN_LIMIT: {:.2}", VOUT_OV_WARN_LIMIT);
-        let vout_ov_warn = self.encode_voltage(VOUT_OV_WARN_LIMIT).await?;
+        trace!(
+            "Setting VOUT_OV_WARN_LIMIT: {:.2}",
+            self.config.vout_ov_warn_limit
+        );
+        let vout_ov_warn = self.encode_voltage(self.config.vout_ov_warn_limit).await?;
         self.write_word(PmbusCommand::VoutOvWarnLimit, vout_ov_warn)
             .await?;
 
-        trace!("Setting VOUT_MARGIN_HIGH: {:.2}", VOUT_MARGIN_HIGH);
-        let vout_margin_high = self.encode_voltage(VOUT_MARGIN_HIGH).await?;
+        trace!(
+            "Setting VOUT_MARGIN_HIGH: {:.2}",
+            self.config.vout_margin_high
+        );
+        let vout_margin_high = self.encode_voltage(self.config.vout_margin_high).await?;
         self.write_word(PmbusCommand::VoutMarginHigh, vout_margin_high)
             .await?;
 
-        trace!("Setting VOUT_MARGIN_LOW: {:.2}", VOUT_MARGIN_LOW);
-        let vout_margin_low = self.encode_voltage(VOUT_MARGIN_LOW).await?;
+        trace!(
+            "Setting VOUT_MARGIN_LOW: {:.2}",
+            self.config.vout_margin_low
+        );
+        let vout_margin_low = self.encode_voltage(self.config.vout_margin_low).await?;
         self.write_word(PmbusCommand::VoutMarginLow, vout_margin_low)
             .await?;
 
-        trace!("Setting VOUT_UV_WARN_LIMIT: {:.2}", VOUT_UV_WARN_LIMIT);
-        let vout_uv_warn = self.encode_voltage(VOUT_UV_WARN_LIMIT).await?;
+        trace!(
+            "Setting VOUT_UV_WARN_LIMIT: {:.2}",
+            self.config.vout_uv_warn_limit
+        );
+        let vout_uv_warn = self.encode_voltage(self.config.vout_uv_warn_limit).await?;
         self.write_word(PmbusCommand::VoutUvWarnLimit, vout_uv_warn)
             .await?;
 
-        trace!("Setting VOUT_UV_FAULT_LIMIT: {:.2}", VOUT_UV_FAULT_LIMIT);
-        let vout_uv_fault = self.encode_voltage(VOUT_UV_FAULT_LIMIT).await?;
+        trace!(
+            "Setting VOUT_UV_FAULT_LIMIT: {:.2}",
+            self.config.vout_uv_fault_limit
+        );
+        let vout_uv_fault = self.encode_voltage(self.config.vout_uv_fault_limit).await?;
         self.write_word(PmbusCommand::VoutUvFaultLimit, vout_uv_fault)
             .await?;
 
@@ -307,79 +360,102 @@ impl<I2C: I2c> Tps546<I2C> {
         )
         .await?;
 
-        // IOUT_OC_FAULT_RESPONSE (0xC0 = shutdown immediately, no retries)
-        const IOUT_OC_FAULT_RESPONSE: u8 = 0xC0;
         trace!(
-            "Setting IOUT_OC_FAULT_RESPONSE: 0x{:02X} (shutdown immediately, no retries)",
-            IOUT_OC_FAULT_RESPONSE
+            "Setting IOUT_OC_FAULT_RESPONSE: 0x{:02X}",
+            self.config.iout_oc_fault_response
         );
-        self.write_byte(PmbusCommand::IoutOcFaultResponse, IOUT_OC_FAULT_RESPONSE)
-            .await?;
+        self.write_byte(
+            PmbusCommand::IoutOcFaultResponse,
+            self.config.iout_oc_fault_response,
+        )
+        .await?;
 
         // Temperature protection
         trace!("----- TEMPERATURE");
-        const OT_WARN_LIMIT: i32 = 105; // degC
-        const OT_FAULT_LIMIT: i32 = 145; // degC
-        const OT_FAULT_RESPONSE: u8 = 0xFF; // Infinite retries
-
-        trace!("Setting OT_WARN_LIMIT: {} degC", OT_WARN_LIMIT);
+        trace!("Setting OT_WARN_LIMIT: {} degC", self.config.ot_warn_limit);
         self.write_word(
             PmbusCommand::OtWarnLimit,
-            self.int_to_slinear11(OT_WARN_LIMIT),
+            self.int_to_slinear11(self.config.ot_warn_limit),
         )
         .await?;
-        trace!("Setting OT_FAULT_LIMIT: {} degC", OT_FAULT_LIMIT);
+
+        trace!(
+            "Setting OT_FAULT_LIMIT: {} degC",
+            self.config.ot_fault_limit
+        );
         self.write_word(
             PmbusCommand::OtFaultLimit,
-            self.int_to_slinear11(OT_FAULT_LIMIT),
+            self.int_to_slinear11(self.config.ot_fault_limit),
         )
         .await?;
+
         trace!(
-            "Setting OT_FAULT_RESPONSE: 0x{:02X} (infinite retries, wait for cooling)",
-            OT_FAULT_RESPONSE
+            "Setting OT_FAULT_RESPONSE: 0x{:02X}",
+            self.config.ot_fault_response
         );
-        self.write_byte(PmbusCommand::OtFaultResponse, OT_FAULT_RESPONSE)
+        self.write_byte(PmbusCommand::OtFaultResponse, self.config.ot_fault_response)
             .await?;
 
         // Timing configuration
         trace!("----- TIMING");
-        const TON_DELAY: i32 = 0;
-        const TON_RISE: i32 = 3;
-        const TON_MAX_FAULT_LIMIT: i32 = 0;
-        const TON_MAX_FAULT_RESPONSE: u8 = 0x3B; // 3 retries, 91ms delay
-        const TOFF_DELAY: i32 = 0;
-        const TOFF_FALL: i32 = 0;
-
-        trace!("Setting TON_DELAY: {}ms", TON_DELAY);
-        self.write_word(PmbusCommand::TonDelay, self.int_to_slinear11(TON_DELAY))
-            .await?;
-        trace!("Setting TON_RISE: {}ms", TON_RISE);
-        self.write_word(PmbusCommand::TonRise, self.int_to_slinear11(TON_RISE))
-            .await?;
-        trace!("Setting TON_MAX_FAULT_LIMIT: {}ms", TON_MAX_FAULT_LIMIT);
+        trace!("Setting TON_DELAY: {}ms", self.config.ton_delay);
         self.write_word(
-            PmbusCommand::TonMaxFaultLimit,
-            self.int_to_slinear11(TON_MAX_FAULT_LIMIT),
+            PmbusCommand::TonDelay,
+            self.int_to_slinear11(self.config.ton_delay),
         )
         .await?;
+
+        trace!("Setting TON_RISE: {}ms", self.config.ton_rise);
+        self.write_word(
+            PmbusCommand::TonRise,
+            self.int_to_slinear11(self.config.ton_rise),
+        )
+        .await?;
+
         trace!(
-            "Setting TON_MAX_FAULT_RESPONSE: 0x{:02X} (3 retries, 91ms delay)",
-            TON_MAX_FAULT_RESPONSE
+            "Setting TON_MAX_FAULT_LIMIT: {}ms",
+            self.config.ton_max_fault_limit
         );
-        self.write_byte(PmbusCommand::TonMaxFaultResponse, TON_MAX_FAULT_RESPONSE)
-            .await?;
-        trace!("Setting TOFF_DELAY: {}ms", TOFF_DELAY);
-        self.write_word(PmbusCommand::ToffDelay, self.int_to_slinear11(TOFF_DELAY))
-            .await?;
-        trace!("Setting TOFF_FALL: {}ms", TOFF_FALL);
-        self.write_word(PmbusCommand::ToffFall, self.int_to_slinear11(TOFF_FALL))
-            .await?;
+        self.write_word(
+            PmbusCommand::TonMaxFaultLimit,
+            self.int_to_slinear11(self.config.ton_max_fault_limit),
+        )
+        .await?;
+
+        trace!(
+            "Setting TON_MAX_FAULT_RESPONSE: 0x{:02X}",
+            self.config.ton_max_fault_response
+        );
+        self.write_byte(
+            PmbusCommand::TonMaxFaultResponse,
+            self.config.ton_max_fault_response,
+        )
+        .await?;
+
+        trace!("Setting TOFF_DELAY: {}ms", self.config.toff_delay);
+        self.write_word(
+            PmbusCommand::ToffDelay,
+            self.int_to_slinear11(self.config.toff_delay),
+        )
+        .await?;
+
+        trace!("Setting TOFF_FALL: {}ms", self.config.toff_fall);
+        self.write_word(
+            PmbusCommand::ToffFall,
+            self.int_to_slinear11(self.config.toff_fall),
+        )
+        .await?;
 
         // Pin detect override
-        trace!("Setting PIN_DETECT_OVERRIDE");
-        const PIN_DETECT_OVERRIDE: u16 = 0xFFFF;
-        self.write_word(PmbusCommand::PinDetectOverride, PIN_DETECT_OVERRIDE)
-            .await?;
+        trace!(
+            "Setting PIN_DETECT_OVERRIDE: 0x{:04X}",
+            self.config.pin_detect_override
+        );
+        self.write_word(
+            PmbusCommand::PinDetectOverride,
+            self.config.pin_detect_override,
+        )
+        .await?;
 
         debug!("TPS546 configuration written successfully");
         Ok(())

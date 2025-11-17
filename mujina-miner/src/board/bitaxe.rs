@@ -370,7 +370,56 @@ impl BitaxeBoard {
     async fn init_power_controller(&mut self) -> Result<(), BoardError> {
         // Clone the I2C bus for the power controller
         let power_i2c = self.i2c.clone();
-        let config = Tps546Config::bitaxe_gamma();
+
+        // Bitaxe Gamma power configuration for TPS546D24A
+        let config = Tps546Config {
+            // Phase and frequency
+            phase: 0x00,
+            frequency_switch_khz: 650,
+
+            // Input voltage thresholds
+            vin_on: 4.8,
+            vin_off: 4.5,
+            vin_uv_warn_limit: 0.0, // Disabled due to TI bug
+            vin_ov_fault_limit: 6.5,
+            vin_ov_fault_response: 0xB7, // Immediate shutdown, 6 retries, 7xTON_RISE delay
+
+            // Output voltage configuration
+            vout_scale_loop: 0.25,
+            vout_min: 1.0,
+            vout_max: 2.0,
+            vout_command: 1.15, // BM1370 default voltage
+
+            // Output voltage protection (relative to vout_command)
+            vout_ov_fault_limit: 1.25, // 125% of VOUT_COMMAND
+            vout_ov_warn_limit: 1.16,  // 116% of VOUT_COMMAND
+            vout_margin_high: 1.10,    // 110% of VOUT_COMMAND
+            vout_margin_low: 0.90,     // 90% of VOUT_COMMAND
+            vout_uv_warn_limit: 0.90,  // 90% of VOUT_COMMAND
+            vout_uv_fault_limit: 0.75, // 75% of VOUT_COMMAND
+
+            // Output current protection
+            iout_oc_warn_limit: 25.0,
+            iout_oc_fault_limit: 30.0,
+            iout_oc_fault_response: 0xC0, // Shutdown immediately, no retries
+
+            // Temperature protection
+            ot_warn_limit: 105,      // degC
+            ot_fault_limit: 145,     // degC
+            ot_fault_response: 0xFF, // Infinite retries
+
+            // Timing configuration
+            ton_delay: 0,
+            ton_rise: 3,
+            ton_max_fault_limit: 0,
+            ton_max_fault_response: 0x3B, // 3 retries, 91ms delay
+            toff_delay: 0,
+            toff_fall: 0,
+
+            // Pin configuration
+            pin_detect_override: 0xFFFF,
+        };
+
         let mut tps546 = Tps546::new(power_i2c, config);
 
         // Initialize the TPS546
@@ -573,15 +622,19 @@ impl BitaxeBoard {
         // Clone event channel for reporting critical faults
         let event_tx = self.event_tx.clone();
 
+        // Clone the regulator Arc for stats monitoring
+        let regulator = self
+            .regulator
+            .clone()
+            .expect("Regulator must be initialized before spawning stats monitor");
+
         let handle = tokio::spawn(async move {
             const STATS_INTERVAL: Duration = Duration::from_secs(30);
             let mut interval = tokio::time::interval(STATS_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-            // Create new controllers for the stats task
-            let mut fan = Emc2101::new(i2c.clone());
-            let config = Tps546Config::bitaxe_gamma();
-            let mut power = Tps546::new(i2c, config);
+            // Create fan controller for the stats task
+            let mut fan = Emc2101::new(i2c);
 
             loop {
                 interval.tick().await;
@@ -614,13 +667,13 @@ impl BitaxeBoard {
                     }
                 };
 
-                // Read power stats
-                let vin = match power.get_vin().await {
+                // Read power stats using the shared regulator
+                let vin = match regulator.lock().await.get_vin().await {
                     Ok(mv) => format!("{:.2}V", mv as f32 / 1000.0),
                     Err(_) => "N/A".to_string(),
                 };
 
-                let vout = match power.get_vout().await {
+                let vout = match regulator.lock().await.get_vout().await {
                     Ok(mv) => {
                         let volts = mv as f32 / 1000.0;
                         if volts < 1.0 {
@@ -631,23 +684,23 @@ impl BitaxeBoard {
                     Err(_) => "N/A".to_string(),
                 };
 
-                let iout = match power.get_iout().await {
+                let iout = match regulator.lock().await.get_iout().await {
                     Ok(ma) => format!("{:.2}A", ma as f32 / 1000.0),
                     Err(_) => "N/A".to_string(),
                 };
 
-                let power_w = match power.get_power().await {
+                let power_w = match regulator.lock().await.get_power().await {
                     Ok(mw) => format!("{:.1}W", mw as f32 / 1000.0),
                     Err(_) => "N/A".to_string(),
                 };
 
-                let vr_temp = match power.get_temperature().await {
+                let vr_temp = match regulator.lock().await.get_temperature().await {
                     Ok(t) => format!("{} degC", t),
                     Err(_) => "N/A".to_string(),
                 };
 
                 // Check power status - critical faults will return error
-                if let Err(e) = power.check_status().await {
+                if let Err(e) = regulator.lock().await.check_status().await {
                     // Log the critical fault
                     error!("CRITICAL: Power controller fault detected: {}", e);
 
@@ -665,7 +718,7 @@ impl BitaxeBoard {
 
                     // Try to clear the fault once
                     warn!("Attempting to clear power controller faults...");
-                    if let Err(clear_err) = power.clear_faults().await {
+                    if let Err(clear_err) = regulator.lock().await.clear_faults().await {
                         error!("Failed to clear faults: {}", clear_err);
                     }
 
