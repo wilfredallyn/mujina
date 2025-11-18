@@ -136,12 +136,17 @@ impl StratumV1Client {
     /// Sends the request and then loops reading messages from the connection,
     /// handling notifications along the way, until the response arrives.
     /// This handles Stratum's message interleaving during the setup phase.
+    ///
+    /// Times out after 30 seconds if no response is received. Responds immediately
+    /// to shutdown requests.
     async fn send_request(
         &mut self,
         conn: &mut Connection,
         method: &str,
         params: serde_json::Value,
     ) -> StratumResult<JsonRpcMessage> {
+        use tokio::time::{timeout, Duration};
+
         let id = self.next_id();
 
         // Send request
@@ -149,41 +154,53 @@ impl StratumV1Client {
         conn.write_message(&msg).await?;
 
         // Loop until we get our response, handling notifications along the way
-        loop {
-            let msg = conn
-                .read_message()
-                .await?
-                .ok_or(StratumError::Disconnected)?;
+        // Timeout after 30s to handle unresponsive pools
+        timeout(Duration::from_secs(30), async {
+            loop {
+                tokio::select! {
+                    // Read message from pool
+                    result = conn.read_message() => {
+                        let msg = result?.ok_or(StratumError::Disconnected)?;
 
-            match msg {
-                JsonRpcMessage::Response { id: resp_id, .. } if resp_id == id => {
-                    // This is our response
-                    return Ok(msg);
-                }
-                JsonRpcMessage::Response { id: other_id, .. } => {
-                    // Response for a different request - shouldn't happen during setup
-                    tracing::warn!(msg_id = other_id, "Received response for different request");
-                }
-                JsonRpcMessage::Request {
-                    id: None,
-                    method,
-                    params,
-                } => {
-                    // Notification - handle it while waiting for our response
-                    if let Err(e) = self.handle_notification(&method, &params).await {
-                        tracing::warn!(error = %e, "Error handling notification during setup");
+                        match msg {
+                            JsonRpcMessage::Response { id: resp_id, .. } if resp_id == id => {
+                                // This is our response
+                                return Ok(msg);
+                            }
+                            JsonRpcMessage::Response { id: other_id, .. } => {
+                                // Response for a different request - shouldn't happen during setup
+                                warn!(msg_id = other_id, "Received response for different request");
+                            }
+                            JsonRpcMessage::Request {
+                                id: None,
+                                method,
+                                params,
+                            } => {
+                                // Notification - handle it while waiting for our response
+                                if let Err(e) = self.handle_notification(&method, &params).await {
+                                    warn!(error = %e, "Error handling notification during setup");
+                                }
+                            }
+                            JsonRpcMessage::Request {
+                                id: Some(_),
+                                method,
+                                ..
+                            } => {
+                                // Request with ID from server (very unusual)
+                                warn!(method = %method, "Server sent request during setup");
+                            }
+                        }
+                    }
+
+                    // Shutdown requested
+                    _ = self.shutdown.cancelled() => {
+                        return Err(StratumError::Disconnected);
                     }
                 }
-                JsonRpcMessage::Request {
-                    id: Some(_),
-                    method,
-                    ..
-                } => {
-                    // Request with ID from server (very unusual)
-                    tracing::warn!(method = %method, "Server sent request during setup");
-                }
             }
-        }
+        })
+        .await
+        .map_err(|_| StratumError::Timeout)?
     }
 
     /// Subscribe to mining notifications.
