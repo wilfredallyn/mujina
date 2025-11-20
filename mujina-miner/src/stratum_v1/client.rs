@@ -229,13 +229,13 @@ impl StratumV1Client {
             )
             .await;
 
+        // Manual parsing for better error context than serde
         match result {
             Ok(JsonRpcMessage::Response {
                 result: Some(result),
                 error: None,
                 ..
             }) => {
-                // Parse result object
                 let obj = result.as_object().ok_or_else(|| {
                     StratumError::InvalidMessage("configure result not an object".to_string())
                 })?;
@@ -302,6 +302,7 @@ impl StratumV1Client {
             .await?;
 
         // Parse response
+        // Manual parsing for better error context than serde tuple structs
         match response {
             JsonRpcMessage::Response {
                 result: Some(result),
@@ -489,6 +490,7 @@ impl StratumV1Client {
 
     /// Handle mining.set_difficulty notification.
     async fn handle_set_difficulty(&mut self, params: &serde_json::Value) -> StratumResult<()> {
+        // Manual parsing for better error context than serde
         let arr = params.as_array().ok_or_else(|| {
             StratumError::InvalidMessage("set_difficulty params not an array".to_string())
         })?;
@@ -517,6 +519,7 @@ impl StratumV1Client {
 
     /// Handle mining.set_version_mask notification.
     async fn handle_set_version_mask(&mut self, params: &serde_json::Value) -> StratumResult<()> {
+        // Manual parsing for better error context than serde
         let arr = params.as_array().ok_or_else(|| {
             StratumError::InvalidMessage("set_version_mask params not an array".to_string())
         })?;

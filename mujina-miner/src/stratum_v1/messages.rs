@@ -102,6 +102,7 @@ impl JobNotification {
     /// Parse from Stratum JSON array parameters.
     ///
     /// Converts hex strings from the pool protocol into typed Bitcoin structures.
+    /// Uses manual parsing for better error context than serde tuple structs.
     pub fn from_stratum_params(params: &[Value]) -> Result<Self, String> {
         if params.len() < 9 {
             return Err("mining.notify params too short".to_string());
@@ -339,6 +340,10 @@ impl JsonRpcMessage {
     }
 
     /// Get the message ID if present.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "will be used as client matures")
+    )]
     pub fn id(&self) -> Option<u64> {
         match self {
             JsonRpcMessage::Request { id, .. } => *id,
@@ -347,33 +352,25 @@ impl JsonRpcMessage {
     }
 
     /// Check if this is a notification (request without ID).
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "will be used as client matures")
+    )]
     pub fn is_notification(&self) -> bool {
         matches!(self, JsonRpcMessage::Request { id: None, .. })
     }
 
     /// Get the method name for requests.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "will be used as client matures")
+    )]
     pub fn method(&self) -> Option<&str> {
         match self {
             JsonRpcMessage::Request { method, .. } => Some(method),
             JsonRpcMessage::Response { .. } => None,
         }
     }
-}
-
-/// Response from mining.subscribe.
-#[derive(Debug, Deserialize)]
-pub struct SubscribeResponse {
-    /// Subscription details (ignored)
-    #[serde(rename = "0")]
-    pub subscriptions: Option<Value>,
-
-    /// Extranonce1 value (hex string)
-    #[serde(rename = "1")]
-    pub extranonce1: String,
-
-    /// Extranonce2 size in bytes
-    #[serde(rename = "2")]
-    pub extranonce2_size: usize,
 }
 
 #[cfg(test)]
