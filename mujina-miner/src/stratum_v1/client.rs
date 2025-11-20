@@ -407,10 +407,12 @@ impl StratumV1Client {
 
     /// Submit a share to the pool.
     ///
-    /// Sends `mining.submit` and waits for acceptance/rejection. Uses the
-    /// message router to handle interleaved notifications.
+    /// Sends `mining.submit` and waits for acceptance/rejection. Emits
+    /// ShareAccepted or ShareRejected events based on pool response.
     async fn submit(&mut self, conn: &mut Connection, params: SubmitParams) -> StratumResult<bool> {
         use serde_json::Value;
+
+        let job_id = params.job_id.clone();
 
         // Convert to Stratum JSON format
         let submit_json = params.to_stratum_json();
@@ -418,7 +420,7 @@ impl StratumV1Client {
             .send_request(conn, "mining.submit", Value::Array(submit_json))
             .await?;
 
-        // Parse response
+        // Parse response and emit appropriate event
         match response {
             JsonRpcMessage::Response {
                 result: Some(result),
@@ -426,13 +428,45 @@ impl StratumV1Client {
                 ..
             } => {
                 // Result should be true for accepted
-                Ok(result.as_bool().unwrap_or(false))
+                let accepted = result.as_bool().unwrap_or(false);
+                if accepted {
+                    self.event_tx
+                        .send(ClientEvent::ShareAccepted { job_id })
+                        .await
+                        .map_err(|_| StratumError::Disconnected)?;
+                } else {
+                    self.event_tx
+                        .send(ClientEvent::ShareRejected {
+                            job_id,
+                            reason: "Pool returned false".to_string(),
+                        })
+                        .await
+                        .map_err(|_| StratumError::Disconnected)?;
+                }
+                Ok(accepted)
             }
             JsonRpcMessage::Response {
-                error: Some(_error),
-                ..
+                error: Some(error), ..
             } => {
-                // Rejection
+                // Pool rejected with error message
+                // Error format: [error_code, "error message", null]
+                let reason = if let Some(arr) = error.as_array() {
+                    arr.get(1)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown error")
+                        .to_string()
+                } else {
+                    format!("{:?}", error)
+                };
+
+                self.event_tx
+                    .send(ClientEvent::ShareRejected {
+                        job_id,
+                        reason: reason.clone(),
+                    })
+                    .await
+                    .map_err(|_| StratumError::Disconnected)?;
+
                 Ok(false)
             }
             _ => Err(StratumError::UnexpectedResponse(
@@ -669,18 +703,10 @@ impl StratumV1Client {
                     match cmd {
                         ClientCommand::SubmitShare(params) => {
                             debug!(job_id = %params.job_id, "Submitting share to pool");
-                            match self.submit(&mut conn, params).await {
-                                Ok(accepted) => {
-                                    if accepted {
-                                        // Will be notified via response
-                                    } else {
-                                        warn!("Share rejected (submit returned false)");
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!(error = %e, "Failed to submit share");
-                                }
+                            if let Err(e) = self.submit(&mut conn, params).await {
+                                warn!(error = %e, "Failed to submit share");
                             }
+                            // Acceptance/rejection emitted via ShareAccepted/ShareRejected events
                         }
                     }
                 }
