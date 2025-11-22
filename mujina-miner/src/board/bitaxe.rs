@@ -157,6 +157,8 @@ pub struct BitaxeBoard {
     thread_shutdown: Option<watch::Sender<ThreadRemovalSignal>>,
     /// Handle for the statistics task
     stats_task_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Serial number from USB device info
+    serial_number: Option<String>,
 }
 
 impl BitaxeBoard {
@@ -183,7 +185,11 @@ impl BitaxeBoard {
     /// # Design Note
     /// In the future, a DeviceManager will create boards when USB devices
     /// are detected (by VID/PID) and pass already-opened serial streams.
-    pub fn new(control: tokio_serial::SerialStream, data_path: &str) -> Result<Self, BoardError> {
+    pub fn new(
+        control: tokio_serial::SerialStream,
+        data_path: &str,
+        serial_number: Option<String>,
+    ) -> Result<Self, BoardError> {
         // Create control channel and I2C controller
         let control_channel = ControlChannel::new(control);
         let i2c = BitaxeRawI2c::new(control_channel.clone());
@@ -214,6 +220,7 @@ impl BitaxeBoard {
             event_rx: None,
             thread_shutdown: None,
             stats_task_handle: None,
+            serial_number,
         })
     }
 
@@ -621,7 +628,6 @@ impl BitaxeBoard {
     fn spawn_stats_monitor(&mut self) {
         // Clone data needed for the monitoring task
         let i2c = self.i2c.clone();
-        let chip_count = self.chip_infos.len();
 
         // Clone event channel for reporting critical faults
         let event_tx = self.event_tx.clone();
@@ -632,6 +638,11 @@ impl BitaxeBoard {
             .clone()
             .expect("Regulator must be initialized before spawning stats monitor");
 
+        // Capture board info for logging
+        let board_info = self.board_info();
+        let board_model = board_info.model.clone();
+        let board_serial = board_info.serial_number.clone();
+
         let handle = tokio::spawn(async move {
             const STATS_INTERVAL: Duration = Duration::from_secs(30);
             let mut interval = tokio::time::interval(STATS_INTERVAL);
@@ -639,6 +650,9 @@ impl BitaxeBoard {
 
             // Create fan controller for the stats task
             let mut fan = Emc2101::new(i2c);
+
+            // Discard first tick (fires immediately, ADC readings may not be settled)
+            interval.tick().await;
 
             loop {
                 interval.tick().await;
@@ -732,7 +746,8 @@ impl BitaxeBoard {
                 }
 
                 info!(
-                    chip_count,
+                    board = %board_model,
+                    serial = ?board_serial,
                     asic_temp = %temp,
                     fan_speed = %fan_speed,
                     fan_rpm = %fan_rpm,
@@ -741,7 +756,7 @@ impl BitaxeBoard {
                     current = %iout,
                     vin = %vin,
                     vout = %vout,
-                    "Board stats"
+                    "Board status."
                 );
             }
         });
@@ -854,7 +869,7 @@ impl Board for BitaxeBoard {
         BoardInfo {
             model: "Bitaxe Gamma".to_string(),
             firmware_version: Some("bitaxe-raw".to_string()),
-            serial_number: None, // Could be read from the board in future
+            serial_number: self.serial_number.clone(),
         }
     }
 
@@ -863,8 +878,6 @@ impl Board for BitaxeBoard {
     }
 
     async fn shutdown(&mut self) -> Result<(), BoardError> {
-        info!("Shutting down Bitaxe board");
-
         // Signal hash threads to shut down gracefully
         if let Some(ref tx) = self.thread_shutdown {
             if let Err(e) = tx.send(ThreadRemovalSignal::Shutdown) {
@@ -899,12 +912,6 @@ impl Board for BitaxeBoard {
             handle.abort();
         }
 
-        let board_info = self.board_info();
-        info!(
-            model = %board_info.model,
-            serial = ?board_info.serial_number,
-            "Board shutdown complete"
-        );
         Ok(())
     }
 
@@ -983,7 +990,7 @@ async fn create_from_usb(
     let control_port = tokio_serial::new(&serial_ports[0], 115200).open_native_async()?;
 
     // Create the board with the control port and data port path
-    let mut board = BitaxeBoard::new(control_port, &serial_ports[1])
+    let mut board = BitaxeBoard::new(control_port, &serial_ports[1], device.serial_number.clone())
         .map_err(|e| crate::error::Error::Hardware(format!("Failed to create board: {}", e)))?;
 
     // Initialize the board (reset, discover chips, start event monitoring)
