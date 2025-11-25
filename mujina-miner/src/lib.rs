@@ -8,7 +8,6 @@ pub mod daemon;
 pub mod error;
 pub mod hash_thread;
 pub mod hw_trait;
-pub mod job_generator;
 pub mod job_source;
 pub mod mgmt_protocol;
 pub mod peripheral;

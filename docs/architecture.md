@@ -38,7 +38,6 @@ src/
 +-- asic/             # Mining ASIC drivers
 +-- backplane.rs      # Backplane: board communication and lifecycle
 +-- scheduler.rs      # Work scheduling and distribution
-+-- job_generator.rs  # Local job generation (testing/solo) [deprecated]
 +-- pool/             # Mining pool connectivity [deprecated]
 +-- job_source/       # Unified mining job sources (pools, solo, testing)
 +-- api/              # HTTP API and WebSocket
@@ -389,11 +388,6 @@ Orchestrates the mining operation:
 - Collects and routes shares
 - Implements work scheduling strategies
 - Manages board lifecycle
-
-#### `job_generator.rs` (Deprecated - Moving to job_source)
-Local job generation for testing and solo mining:
-- Being replaced by `job_source/dummy` and `job_source/solo`
-- Retained temporarily for backward compatibility
 
 ### API and Observability
 
