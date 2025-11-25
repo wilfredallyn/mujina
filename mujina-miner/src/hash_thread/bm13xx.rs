@@ -24,7 +24,7 @@ use crate::{
     board::bitaxe::{BitaxePeripherals, ThreadRemovalSignal},
     hw_trait::gpio::{GpioPin, PinValue},
     tracing::prelude::*,
-    types::DisplayDifficulty,
+    types::{DisplayDifficulty, HashRate},
 };
 
 /// Tracks tasks sent to chip hardware, indexed by chip_job_id.
@@ -153,7 +153,7 @@ impl BM13xxThread {
             command_tx: cmd_tx,
             event_rx: Some(evt_rx),
             capabilities: HashThreadCapabilities {
-                hashrate_estimate: 1_000_000_000.0, // Stub: 1 GH/s
+                hashrate_estimate: HashRate::from_terahashes(1.0), // Stub
             },
             status,
         }

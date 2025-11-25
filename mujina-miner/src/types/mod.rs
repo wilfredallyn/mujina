@@ -57,7 +57,7 @@ pub struct Share {
 }
 
 /// Hashrate measurement.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct HashRate(pub u64); // hashes per second
 
 impl HashRate {

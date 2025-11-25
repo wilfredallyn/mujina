@@ -40,6 +40,7 @@ use tokio_util::sync::CancellationToken;
 use crate::hash_thread::{task::HashTask, HashThread, HashThreadEvent};
 use crate::job_source::{JobTemplate, MerkleRootKind, SourceCommand, SourceEvent};
 use crate::tracing::prelude::*;
+use crate::types::HashRate;
 
 /// Unique identifier for a job source, assigned by the scheduler.
 pub type SourceId = slotmap::DefaultKey;
@@ -352,7 +353,7 @@ pub async fn task(
                     HashThreadEvent::StatusUpdate(status) => {
                         trace!(
                             thread_id = ?thread_id,
-                            hashrate_ghs = format!("{:.2}", status.hashrate / 1_000_000_000.0),
+                            hashrate = %status.hashrate.to_human_readable(),
                             active = status.is_active,
                             "Thread status"
                         );
@@ -431,18 +432,18 @@ impl MiningStats {
         let elapsed = self.start_time.elapsed().as_secs_f64();
 
         // Calculate hashrate from accumulated hashes
-        let hashrate_ghs = if elapsed > 0.0 && self.total_hashes > 0 {
+        let hashrate = if elapsed > 0.0 && self.total_hashes > 0 {
             let hashrate_hs = self.total_hashes as f64 / elapsed;
-            Some(hashrate_hs / 1_000_000_000.0)
+            Some(HashRate(hashrate_hs as u64))
         } else {
             None
         };
 
         // Mining statistics
-        if let Some(ghs) = hashrate_ghs {
+        if let Some(rate) = hashrate {
             info!(
                 uptime_s = elapsed as u64,
-                hashrate = format!("{:.1} GH/s", ghs),
+                hashrate = %rate.to_human_readable(),
                 shares = self.shares_submitted,
                 "Mining status."
             );

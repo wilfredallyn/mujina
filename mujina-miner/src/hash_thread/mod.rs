@@ -33,12 +33,13 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use self::task::{HashTask, Share};
+use crate::types::HashRate;
 
 /// HashThread capabilities reported to scheduler for work assignment decisions.
 #[derive(Debug, Clone)]
 pub struct HashThreadCapabilities {
-    /// Estimated hashrate in H/s
-    pub hashrate_estimate: f64,
+    /// Estimated hashrate
+    pub hashrate_estimate: HashRate,
     // Future capabilities:
     // pub can_roll_version: bool,
     // pub version_roll_bits: u32,
@@ -50,8 +51,8 @@ pub struct HashThreadCapabilities {
 /// Current runtime status of a HashThread.
 #[derive(Debug, Clone, Default)]
 pub struct HashThreadStatus {
-    /// Current hashrate estimate in H/s
-    pub hashrate: f64,
+    /// Current hashrate estimate
+    pub hashrate: HashRate,
 
     /// Number of shares found (at chip target level, before pool filtering)
     pub chip_shares_found: u64,
