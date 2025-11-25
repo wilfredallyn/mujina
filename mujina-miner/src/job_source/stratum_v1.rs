@@ -4,13 +4,15 @@
 //! abstraction. It handles the conversion between Stratum protocol messages and
 //! the internal JobTemplate/Share types used by the scheduler.
 
+use std::time::Duration;
+
 use anyhow::Result;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use crate::stratum_v1::{ClientEvent, JobNotification, PoolConfig};
-use crate::types::{Difficulty, HashRate};
+use crate::types::{difficulty_for_share_interval, Difficulty, HashRate};
 
 use super::{
     Extranonce2Range, GeneralPurposeBits, JobTemplate, MerkleRootKind, MerkleRootTemplate, Share,
@@ -99,9 +101,11 @@ impl StratumV1Source {
 
         let version_template = VersionTemplate::new(job.version, gp_bits_mask)?;
 
-        // Convert share difficulty to target
-        // Default to difficulty 1 if not yet set by pool
-        let share_difficulty = state.share_difficulty.unwrap_or(Difficulty::new(1));
+        // Determine share difficulty with internal minimum
+        let pool_difficulty = state.share_difficulty.unwrap_or(Difficulty::new(1));
+        let min_difficulty =
+            difficulty_for_share_interval(Duration::from_secs(10), self.expected_hashrate);
+        let share_difficulty = pool_difficulty.max(min_difficulty);
         let share_target = share_difficulty.to_target();
 
         Ok(JobTemplate {
