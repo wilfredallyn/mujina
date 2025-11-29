@@ -39,6 +39,22 @@ impl Difficulty {
         Self(value)
     }
 
+    /// Calculate difficulty from a target.
+    ///
+    /// Uses the formula: difficulty = MAX_TARGET / target
+    ///
+    /// This is the inverse of `to_target()`.
+    pub fn from_target(target: Target) -> Self {
+        let target_u256 = U256::from(target);
+        if target_u256 == U256::ZERO {
+            return Self(u64::MAX);
+        }
+
+        let max_target = U256::from(Target::MAX);
+        let difficulty = max_target / target_u256;
+        Self(difficulty.saturating_to_u64())
+    }
+
     /// Calculate difficulty from a block hash.
     ///
     /// Uses the formula: difficulty = MAX_TARGET / hash
@@ -135,6 +151,22 @@ mod tests {
         let diff_low = Difficulty::new(100);
         let diff_high = Difficulty::new(1000);
         assert!(diff_high.to_target() < diff_low.to_target());
+    }
+
+    #[test]
+    fn test_difficulty_from_target() {
+        // Target::MAX gives difficulty 1
+        assert_eq!(Difficulty::from_target(Target::MAX), Difficulty::new(1));
+
+        // Round-trip: difficulty -> target -> difficulty
+        let original = Difficulty::new(1024);
+        let recovered = Difficulty::from_target(original.to_target());
+        assert_eq!(recovered, original);
+
+        // Larger difficulty round-trip
+        let original = Difficulty::new(1_000_000);
+        let recovered = Difficulty::from_target(original.to_target());
+        assert_eq!(recovered, original);
     }
 
     #[test]
