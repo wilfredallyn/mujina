@@ -18,10 +18,9 @@ use tokio_stream::StreamExt;
 use super::protocol;
 use crate::{
     asic::hash_thread::{
-        BoardPeripherals, HashThread, HashThreadCapabilities, HashThreadError, HashThreadEvent,
-        HashThreadStatus, ThreadRemovalSignal,
+        BoardPeripherals, HashTask, HashThread, HashThreadCapabilities, HashThreadError,
+        HashThreadEvent, HashThreadStatus, Share, ThreadRemovalSignal,
     },
-    hash_thread::task::{HashTask, Share},
     tracing::prelude::*,
     types::{Difficulty, HashRate},
 };

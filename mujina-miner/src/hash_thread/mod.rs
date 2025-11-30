@@ -8,6 +8,6 @@ pub mod task;
 
 // Re-export everything from the canonical location
 pub use crate::asic::hash_thread::{
-    AsicEnable, BoardPeripherals, HashThread, HashThreadCapabilities, HashThreadError,
-    HashThreadEvent, HashThreadStatus, ThreadRemovalSignal, VoltageRegulator,
+    AsicEnable, BoardPeripherals, HashTask, HashThread, HashThreadCapabilities, HashThreadError,
+    HashThreadEvent, HashThreadStatus, Share, ThreadRemovalSignal, VoltageRegulator,
 };
