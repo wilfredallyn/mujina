@@ -1,4 +1,5 @@
 pub mod bm13xx;
+pub mod hash_thread;
 
 use async_trait::async_trait;
 use std::error::Error;
