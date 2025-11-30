@@ -65,14 +65,14 @@ impl ChipJobTracker {
 /// Command messages sent from scheduler to thread
 #[derive(Debug)]
 enum ThreadCommand {
-    /// Update work (old shares still valid)
-    UpdateWork {
+    /// Update task (old shares still valid)
+    UpdateTask {
         new_task: HashTask,
         response_tx: oneshot::Sender<std::result::Result<Option<HashTask>, HashThreadError>>,
     },
 
-    /// Replace work (old shares invalid)
-    ReplaceWork {
+    /// Replace task (old shares invalid)
+    ReplaceTask {
         new_task: HashTask,
         response_tx: oneshot::Sender<std::result::Result<Option<HashTask>, HashThreadError>>,
     },
@@ -165,15 +165,15 @@ impl HashThread for BM13xxThread {
         &self.capabilities
     }
 
-    async fn update_work(
+    async fn update_task(
         &mut self,
-        new_work: HashTask,
+        new_task: HashTask,
     ) -> std::result::Result<Option<HashTask>, HashThreadError> {
         let (response_tx, response_rx) = oneshot::channel();
 
         self.command_tx
-            .send(ThreadCommand::UpdateWork {
-                new_task: new_work,
+            .send(ThreadCommand::UpdateTask {
+                new_task,
                 response_tx,
             })
             .await
@@ -184,15 +184,15 @@ impl HashThread for BM13xxThread {
             .map_err(|_| HashThreadError::WorkAssignmentFailed("no response from thread".into()))?
     }
 
-    async fn replace_work(
+    async fn replace_task(
         &mut self,
-        new_work: HashTask,
+        new_task: HashTask,
     ) -> std::result::Result<Option<HashTask>, HashThreadError> {
         let (response_tx, response_rx) = oneshot::channel();
 
         self.command_tx
-            .send(ThreadCommand::ReplaceWork {
-                new_task: new_work,
+            .send(ThreadCommand::ReplaceTask {
+                new_task,
                 response_tx,
             })
             .await
@@ -731,7 +731,7 @@ async fn bm13xx_thread_actor<R, W>(
             // Commands from scheduler
             Some(cmd) = cmd_rx.recv() => {
                 match cmd {
-                    ThreadCommand::UpdateWork { new_task, response_tx } => {
+                    ThreadCommand::UpdateTask { new_task, response_tx } => {
                         if let Some(ref old) = current_task {
                             debug!(
                                 old_job = %old.template.id,
@@ -782,7 +782,7 @@ async fn bm13xx_thread_actor<R, W>(
                         response_tx.send(Ok(old_task)).ok();
                     }
 
-                    ThreadCommand::ReplaceWork { new_task, response_tx } => {
+                    ThreadCommand::ReplaceTask { new_task, response_tx } => {
                         if let Some(ref old) = current_task {
                             debug!(
                                 old_job = %old.template.id,

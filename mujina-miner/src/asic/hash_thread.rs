@@ -201,30 +201,30 @@ pub trait HashThread: Send {
     /// Get thread capabilities for scheduling decisions
     fn capabilities(&self) -> &HashThreadCapabilities;
 
-    /// Update current work (shares from old work still valid)
+    /// Update current task (shares from old task still valid)
     ///
-    /// Thread continues hashing old work until new work is ready. Late-arriving
-    /// shares from the old work can still be submitted (they're valuable).
+    /// Thread continues hashing old task until new task is ready. Late-arriving
+    /// shares from the old task can still be submitted (they're valuable).
     /// Returns the old task for potential resumption (None if thread was idle).
     ///
     /// Used when pool sends updated job (difficulty change, new transactions in
     /// mempool) but the work is fundamentally still valid.
-    async fn update_work(
+    async fn update_task(
         &mut self,
-        new_work: HashTask,
+        new_task: HashTask,
     ) -> std::result::Result<Option<HashTask>, HashThreadError>;
 
-    /// Replace current work (old work invalidated)
+    /// Replace current task (old task invalidated)
     ///
-    /// Old work is immediately invalid - discard it and don't submit shares
+    /// Old task is immediately invalid - discard it and don't submit shares
     /// from it. Returns the old task for tracking purposes (None if thread was
     /// idle).
     ///
     /// Used when blockchain tip changes (new prevhash) or pool signals
     /// clean_jobs.
-    async fn replace_work(
+    async fn replace_task(
         &mut self,
-        new_work: HashTask,
+        new_task: HashTask,
     ) -> std::result::Result<Option<HashTask>, HashThreadError>;
 
     /// Put thread in idle state (low power, no hashing)

@@ -295,8 +295,8 @@ pub async fn task(
                                 share_tx,
                             };
 
-                            if let Err(e) = thread.update_work(hash_task).await {
-                                error!(thread_id = ?thread_id, error = %e, "Failed to assign work");
+                            if let Err(e) = thread.update_task(hash_task).await {
+                                error!(thread_id = ?thread_id, error = %e, "Failed to assign task");
                             } else {
                                 // Register task in scheduler (old tasks stay active)
                                 let task_id = tasks.insert(TaskEntry {
@@ -366,8 +366,8 @@ pub async fn task(
                                 share_tx,
                             };
 
-                            if let Err(e) = thread.replace_work(hash_task).await {
-                                error!(thread_id = ?thread_id, error = %e, "Failed to replace work");
+                            if let Err(e) = thread.replace_task(hash_task).await {
+                                error!(thread_id = ?thread_id, error = %e, "Failed to replace task");
                             } else {
                                 // Register new task
                                 let task_id = tasks.insert(TaskEntry {
