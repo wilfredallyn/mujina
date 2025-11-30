@@ -4,7 +4,7 @@
 //! integer type to bitcoin.
 
 use bitcoin::hashes::Hash;
-use bitcoin::pow::Target;
+use bitcoin::pow::{Target, Work};
 
 use super::BlockHash;
 use crate::u256::U256;
@@ -24,6 +24,12 @@ impl From<U256> for Target {
 impl From<&BlockHash> for U256 {
     fn from(hash: &BlockHash) -> Self {
         Self::from_le_bytes(*hash.as_byte_array())
+    }
+}
+
+impl From<Work> for U256 {
+    fn from(work: Work) -> Self {
+        Self::from_le_bytes(work.to_le_bytes())
     }
 }
 

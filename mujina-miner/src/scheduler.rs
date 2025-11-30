@@ -44,6 +44,7 @@ use crate::job_source::{
 };
 use crate::tracing::prelude::*;
 use crate::types::{expected_time_to_share_from_target, HashRate};
+use crate::u256::U256;
 
 /// Unique identifier for a job source, assigned by the scheduler.
 pub type SourceId = slotmap::DefaultKey;
@@ -416,10 +417,8 @@ pub async fn task(
                     "Share found"
                 );
 
-                // Track hashes for hashrate measurement
-                // Use threshold difficulty, not achieved difficulty (see MiningStats doc)
-                let hashes = (share.threshold_difficulty * (u32::MAX as f64 + 1.0)) as u128;
-                stats.total_hashes += hashes;
+                // Track hashes for hashrate measurement (see MiningStats doc)
+                stats.total_hashes += share.expected_hashes;
 
                 // Check if share meets source threshold
                 if task_entry.template.share_target.is_met_by(share.hash) {
@@ -615,18 +614,16 @@ struct MiningStats {
     start_time: std::time::Instant,
     /// Total hashes performed (accumulated across all shares).
     ///
-    /// Uses u128 for overflow safety. At 1 TH/s, u64 would overflow in 5 hours
-    /// but u128 won't overflow for 10 quadrillion years.
-    total_hashes: u128,
+    /// Uses U256 for overflow safety and to match Share::expected_hashes.
+    total_hashes: U256,
     shares_submitted: u64,
 }
 
 impl Default for MiningStats {
     fn default() -> Self {
-        let now = std::time::Instant::now();
         Self {
-            start_time: now,
-            total_hashes: 0,
+            start_time: std::time::Instant::now(),
+            total_hashes: U256::ZERO,
             shares_submitted: 0,
         }
     }
@@ -636,8 +633,8 @@ impl MiningStats {
     fn log_summary(&self) {
         let elapsed = self.start_time.elapsed();
 
-        let hashrate_str = if self.total_hashes > 0 && elapsed.as_secs() > 0 {
-            let rate = HashRate((self.total_hashes as f64 / elapsed.as_secs_f64()) as u64);
+        let hashrate_str = if self.total_hashes != U256::ZERO && elapsed.as_secs() > 0 {
+            let rate = HashRate((self.total_hashes / elapsed.as_secs()).saturating_to_u64());
             rate.to_human_readable()
         } else {
             "--".to_string()
