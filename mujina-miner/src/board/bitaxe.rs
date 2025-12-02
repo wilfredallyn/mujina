@@ -194,11 +194,8 @@ impl BitaxeBoard {
             i2c,
             fan_controller: None,
             regulator: None,
-            data_writer: Some(FramedWrite::new(data_writer, bm13xx::FrameCodec::default())),
-            data_reader: Some(FramedRead::new(
-                tracing_reader,
-                bm13xx::FrameCodec::default(),
-            )),
+            data_writer: Some(FramedWrite::new(data_writer, bm13xx::FrameCodec)),
+            data_reader: Some(FramedRead::new(tracing_reader, bm13xx::FrameCodec)),
             data_control,
             chip_infos: Vec::new(),
             event_tx: None,

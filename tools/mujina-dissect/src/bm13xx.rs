@@ -212,7 +212,7 @@ impl ResponseStreamingParser {
             buffer: BytesMut::new(),
             byte_queue: VecDeque::new(),
             invalid_accumulator: Vec::new(),
-            frame_codec: FrameCodec::default(),
+            frame_codec: FrameCodec,
         }
     }
 

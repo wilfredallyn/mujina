@@ -1189,9 +1189,7 @@ impl Response {
 }
 
 #[derive(Default)]
-pub struct FrameCodec {
-    last_buffer_size: usize,
-}
+pub struct FrameCodec;
 
 impl Encoder<Command> for FrameCodec {
     type Error = io::Error;
@@ -1251,26 +1249,6 @@ impl Decoder for FrameCodec {
         // All BM13xx responses are 11 bytes (2 preamble + 9 data)
         const FRAME_LEN: usize = PREAMBLE.len() + 9;
         const CALL_AGAIN: Result<Option<Response>, io::Error> = Ok(None);
-
-        // Log significant buffer changes
-        if src.len() != self.last_buffer_size {
-            if src.len() > self.last_buffer_size + 5 || // Growing significantly
-               (self.last_buffer_size >= FRAME_LEN && src.len() < FRAME_LEN)
-            {
-                // Dropped below frame size
-                trace!(
-                    "Decoder buffer: {} -> {} bytes ({})",
-                    self.last_buffer_size,
-                    src.len(),
-                    if src.len() > self.last_buffer_size {
-                        "growing"
-                    } else {
-                        "shrinking"
-                    }
-                );
-            }
-            self.last_buffer_size = src.len();
-        }
 
         if src.len() < FRAME_LEN {
             return CALL_AGAIN;
@@ -1752,7 +1730,7 @@ mod command_tests {
             version: bitcoin::block::Version::from_consensus(0x20000000),
         };
 
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
         let mut frame = BytesMut::new();
         codec
             .encode(
@@ -1830,7 +1808,7 @@ mod command_tests {
             version: *esp_miner_job::wire_tx::VERSION,
         };
 
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
         let mut frame = BytesMut::new();
         codec
             .encode(
@@ -1850,7 +1828,7 @@ mod command_tests {
     }
 
     fn assert_frame_eq(cmd: Command, expect: &[u8]) {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
         let mut frame = BytesMut::new();
         codec
             .encode(cmd, &mut frame)
@@ -1893,7 +1871,7 @@ mod command_tests {
             version: *esp_miner_job::wire_tx::VERSION,
         };
 
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
         let mut frame = BytesMut::new();
         codec
             .encode(Command::JobFull { job_data: job }, &mut frame)
@@ -1925,7 +1903,7 @@ mod response_tests {
 
     #[test]
     fn decoder_with_exact_frame_size() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Exactly 11 bytes - a complete frame
         let mut buf = BytesMut::new();
@@ -1974,7 +1952,7 @@ mod response_tests {
 
     fn decode_frame(frame: &[u8]) -> Option<Response> {
         let mut buf = BytesMut::from(frame);
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
         codec.decode(&mut buf).expect("Failed to decode frame")
     }
 
@@ -2070,7 +2048,7 @@ mod response_tests {
 
     #[test]
     fn decoder_handles_partial_frames() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Test with incomplete frame (less than 11 bytes)
         let mut buf = BytesMut::new();
@@ -2090,7 +2068,7 @@ mod response_tests {
 
     #[test]
     fn decoder_handles_corrupted_crc() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Valid frame with corrupted CRC (last byte)
         let mut buf = BytesMut::new();
@@ -2109,7 +2087,7 @@ mod response_tests {
 
     #[test]
     fn decoder_finds_frame_after_garbage() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Garbage bytes followed by valid frame
         let mut buf = BytesMut::new();
@@ -2131,7 +2109,7 @@ mod response_tests {
 
     #[test]
     fn decoder_handles_false_start() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Frame that starts with 0xAA but not followed by 0x55
         let mut buf = BytesMut::new();
@@ -2171,7 +2149,7 @@ mod response_tests {
 
     #[test]
     fn decoder_handles_back_to_back_frames() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Two valid frames back-to-back
         let mut buf = BytesMut::new();
@@ -2197,7 +2175,7 @@ mod response_tests {
 
     #[test]
     fn decoder_handles_real_s21_pro_frames() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Real frames from S21 Pro capture
         let frames = vec![
@@ -2227,7 +2205,7 @@ mod response_tests {
 
     #[test]
     fn decoder_handles_stream_with_lost_bytes() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Simulate a stream where some bytes in the middle are lost
         let mut buf = BytesMut::new();
@@ -2255,7 +2233,7 @@ mod response_tests {
 
     #[test]
     fn decoder_handles_mid_frame_start() {
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Start reading in the middle of a frame
         let mut buf = BytesMut::new();
@@ -2294,7 +2272,7 @@ mod response_tests {
     #[test]
     fn decoder_validates_real_register_responses() {
         // Test all register read responses are handled correctly
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
 
         // Standard chip detection response
         let mut buf = BytesMut::new();
@@ -2376,7 +2354,7 @@ mod response_tests {
             version: *esp_miner_job::notify::VERSION,
         };
 
-        let mut codec = FrameCodec::default();
+        let mut codec = FrameCodec;
         let mut tx_frame = BytesMut::new();
         codec
             .encode(
