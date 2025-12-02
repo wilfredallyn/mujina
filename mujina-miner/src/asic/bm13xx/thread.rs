@@ -942,7 +942,7 @@ async fn bm13xx_thread_actor<R, W>(
                             }
 
                             protocol::Response::ReadRegister { chip_address, register } => {
-                                trace!(chip_address, register = ?register, "Register read response");
+                                trace!(chip_address = %format!("0x{:02x}", chip_address), register = ?register, "Register read response");
                             }
                         }
                     }
