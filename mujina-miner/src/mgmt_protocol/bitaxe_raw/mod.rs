@@ -53,9 +53,24 @@ pub mod gpio;
 pub mod i2c;
 
 use bytes::{BufMut, BytesMut};
-use std::io;
+use std::{fmt, io};
 use tokio_util::codec::{Decoder, Encoder};
 use tracing::trace;
+
+/// Wrapper for formatting byte slices as space-separated hex.
+struct HexBytes<'a>(&'a [u8]);
+
+impl fmt::Display for HexBytes<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, byte) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
+    }
+}
 
 /// Error response marker
 const ERROR_MARKER: u8 = 0xff;
@@ -304,8 +319,8 @@ impl Decoder for ControlCodec {
         trace!(
             id = response.id,
             status = if response.error.is_some() { "ERR" } else { "OK" },
-            data = ?response.data,
-            frame = ?packet_data,
+            data = %HexBytes(&response.data),
+            frame = %HexBytes(&packet_data),
             "RX control"
         );
 
@@ -327,9 +342,9 @@ impl Encoder<Packet> for ControlCodec {
         trace!(
             id = item.id,
             page = ?item.page,
-            cmd = %format!("{:#04x}", item.command),
-            data = ?item.data,
-            frame = ?encoded,
+            cmd = %format!("0x{:02x}", item.command),
+            data = %HexBytes(&item.data),
+            frame = %HexBytes(&encoded),
             "TX control"
         );
         dst.extend_from_slice(&encoded);

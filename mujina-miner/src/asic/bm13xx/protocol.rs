@@ -21,6 +21,21 @@ use super::error::ProtocolError;
 use crate::job_source::GeneralPurposeBits;
 use crate::tracing::prelude::*;
 
+/// Wrapper for formatting byte slices as space-separated hex.
+struct HexBytes<'a>(&'a [u8]);
+
+impl fmt::Display for HexBytes<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, byte) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
+    }
+}
+
 /// Mining frequency with validation and PLL calculation
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Frequency {
@@ -1207,7 +1222,7 @@ impl Encoder<Command> for FrameCodec {
         trace!(
             cmd = ?command,
             bytes = dst.len(),
-            frame = ?dst.as_ref(),
+            frame = %HexBytes(dst.as_ref()),
             "TX BM13xx"
         );
 
@@ -1299,7 +1314,7 @@ impl Decoder for FrameCodec {
                 trace!(
                     resp = ?response,
                     bytes = FRAME_LEN,
-                    frame = ?frame_bytes,
+                    frame = %HexBytes(&frame_bytes),
                     "RX BM13xx"
                 );
                 Ok(Some(response))
