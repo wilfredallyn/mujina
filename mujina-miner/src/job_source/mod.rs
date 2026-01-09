@@ -53,6 +53,7 @@
 // Submodules
 pub mod dummy;
 mod extranonce2;
+pub mod forced_rate;
 pub(crate) mod job;
 mod merkle;
 mod messages;

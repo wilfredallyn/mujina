@@ -15,7 +15,12 @@ use crate::{
     asic::hash_thread::HashThread,
     backplane::Backplane,
     cpu_miner::CpuMinerConfig,
-    job_source::{dummy::DummySource, stratum_v1::StratumV1Source, SourceEvent},
+    job_source::{
+        dummy::DummySource,
+        forced_rate::{ForcedRateConfig, ForcedRateSource},
+        stratum_v1::StratumV1Source,
+        SourceCommand, SourceEvent,
+    },
     scheduler::{self, SourceRegistration},
     stratum_v1::{PoolConfig as StratumPoolConfig, FLOOD_PREVENTION_CAP},
     transport::{cpu as cpu_transport, CpuDeviceInfo, TransportEvent, UsbTransport},
@@ -112,27 +117,80 @@ impl Daemon {
                 suggested_difficulty: None,
             };
 
-            let stratum_source = StratumV1Source::new(
-                stratum_config,
-                source_cmd_rx,
-                source_event_tx,
-                self.shutdown.clone(),
-            );
+            // Optionally wrap with ForcedRateSource for testing
+            if let Some(forced_rate_config) = ForcedRateConfig::from_env() {
+                info!(
+                    rate = %forced_rate_config.target_rate,
+                    "Forced share rate wrapper enabled"
+                );
 
-            source_reg_tx
-                .send(SourceRegistration {
-                    name: stratum_source.name(),
-                    event_rx: source_event_rx,
-                    command_tx: source_cmd_tx,
-                    max_share_rate: Some(FLOOD_PREVENTION_CAP),
-                })
-                .await?;
+                // Create inner channels (stratum <-> wrapper)
+                let (inner_event_tx, inner_event_rx) = mpsc::channel::<SourceEvent>(100);
+                let (inner_cmd_tx, inner_cmd_rx) = mpsc::channel::<SourceCommand>(10);
 
-            self.tracker.spawn(async move {
-                if let Err(e) = stratum_source.run().await {
-                    error!("Stratum v1 source error: {}", e);
-                }
-            });
+                let stratum_source = StratumV1Source::new(
+                    stratum_config,
+                    inner_cmd_rx,
+                    inner_event_tx,
+                    self.shutdown.clone(),
+                );
+                let stratum_name = stratum_source.name();
+
+                // Spawn stratum source
+                self.tracker.spawn(async move {
+                    if let Err(e) = stratum_source.run().await {
+                        error!("Stratum v1 source error: {}", e);
+                    }
+                });
+
+                // Create and spawn wrapper (uses outer channels from above)
+                let forced_rate = ForcedRateSource::new(
+                    forced_rate_config,
+                    inner_event_rx,
+                    source_event_tx,
+                    inner_cmd_tx,
+                    source_cmd_rx,
+                    self.shutdown.clone(),
+                );
+
+                source_reg_tx
+                    .send(SourceRegistration {
+                        name: format!("{} (forced-rate)", stratum_name),
+                        event_rx: source_event_rx,
+                        command_tx: source_cmd_tx,
+                        max_share_rate: None, // Wrapper controls rate
+                    })
+                    .await?;
+
+                self.tracker.spawn(async move {
+                    if let Err(e) = forced_rate.run().await {
+                        error!("Forced rate wrapper error: {}", e);
+                    }
+                });
+            } else {
+                // Direct stratum source (no wrapper)
+                let stratum_source = StratumV1Source::new(
+                    stratum_config,
+                    source_cmd_rx,
+                    source_event_tx,
+                    self.shutdown.clone(),
+                );
+
+                source_reg_tx
+                    .send(SourceRegistration {
+                        name: stratum_source.name(),
+                        event_rx: source_event_rx,
+                        command_tx: source_cmd_tx,
+                        max_share_rate: Some(FLOOD_PREVENTION_CAP),
+                    })
+                    .await?;
+
+                self.tracker.spawn(async move {
+                    if let Err(e) = stratum_source.run().await {
+                        error!("Stratum v1 source error: {}", e);
+                    }
+                });
+            }
         } else {
             // Use DummySource
             info!("Using dummy job source (set MUJINA_POOL_URL to use Stratum v1)");
