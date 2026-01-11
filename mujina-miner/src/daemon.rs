@@ -14,10 +14,11 @@ use crate::{
     api::{self, ApiConfig},
     asic::hash_thread::HashThread,
     backplane::Backplane,
+    cpu_miner::CpuMinerConfig,
     job_source::{dummy::DummySource, stratum_v1::StratumV1Source, SourceEvent},
     scheduler::{self, SourceRegistration},
     stratum_v1::PoolConfig as StratumPoolConfig,
-    transport::{TransportEvent, UsbTransport},
+    transport::{cpu as cpu_transport, CpuDeviceInfo, TransportEvent, UsbTransport},
 };
 
 /// The main daemon.
@@ -50,6 +51,25 @@ impl Daemon {
             }
         } else {
             info!("USB discovery disabled (MUJINA_USB_DISABLE set)");
+        }
+
+        // Inject CPU miner virtual device if configured
+        if let Some(config) = CpuMinerConfig::from_env() {
+            info!(
+                threads = config.thread_count,
+                duty = config.duty_percent,
+                "CPU miner enabled"
+            );
+            let event = TransportEvent::Cpu(cpu_transport::TransportEvent::CpuDeviceConnected(
+                CpuDeviceInfo {
+                    device_id: format!("cpu-{}x{}%", config.thread_count, config.duty_percent),
+                    thread_count: config.thread_count,
+                    duty_percent: config.duty_percent,
+                },
+            ));
+            if let Err(e) = transport_tx.send(event).await {
+                error!("Failed to send CPU miner event: {}", e);
+            }
         }
 
         // Create and start backplane
