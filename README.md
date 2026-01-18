@@ -79,11 +79,8 @@ Planned support:
 On Debian/Ubuntu systems:
 
 ```bash
-sudo apt-get install libudev-dev
+sudo apt-get install libudev-dev libssl-dev
 ```
-
-The `libudev-dev` package provides header files for building, and depends on
-the `libudev` package which provides the library for runtime.
 
 ### macOS
 
